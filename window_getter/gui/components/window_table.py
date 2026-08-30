@@ -1,12 +1,14 @@
 """
-Window List Table Widget with Right-Click Context Menu for PyQt6 GUI.
+Window List Table Widget with Right-Click Context Menu and Clipboard Copy Support for PyQt6 GUI.
 """
 
+import json
 from typing import List, Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QMenu
+    QHeaderView, QMenu, QApplication
 )
+from PyQt6.QtGui import QKeySequence
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from window_getter.core.models import WindowInfo
 
@@ -37,7 +39,7 @@ class WindowTableWidget(QWidget):
         self.table.setHorizontalHeaderLabels([
             "Status", "App ID / Class", "Window Title", "PID", "Workspace", "Geometry", "Memory"
         ])
-        
+
         # Configure Header Column Resizing
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -57,6 +59,19 @@ class WindowTableWidget(QWidget):
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
 
         layout.addWidget(self.table)
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self._copy_selected_row()
+            return
+        super().keyPressEvent(event)
+
+    def _copy_selected_row(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self.filtered_windows):
+            win = self.filtered_windows[row]
+            row_text = f"{win.display_app_id}\t{win.display_title}\t{win.pid}\t{win.workspace_name}\t{win.geometry_str}\t{win.memory_mb:.1f} MB\t{win.address}"
+            QApplication.clipboard().setText(row_text)
 
     def update_data(self, windows: List[WindowInfo], filter_text: str = "", filter_workspace: str = "All"):
         self.windows = windows
@@ -90,10 +105,10 @@ class WindowTableWidget(QWidget):
 
             # App ID / Class
             app_item = QTableWidgetItem(w.display_app_id)
-            
+
             # Title
             title_item = QTableWidgetItem(w.display_title)
-            
+
             # PID
             pid_item = QTableWidgetItem(str(w.pid))
             pid_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -101,7 +116,6 @@ class WindowTableWidget(QWidget):
             # Workspace
             ws_item = QTableWidgetItem(str(w.workspace_name or w.workspace_id))
             ws_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
 
             # Geometry
             geom_item = QTableWidgetItem(w.geometry_str)
@@ -162,9 +176,20 @@ class WindowTableWidget(QWidget):
         act_focus = menu.addAction("Focus Window")
         act_rule = menu.addAction("Create Rule")
         act_relaunch = menu.addAction("Relaunch Window")
-
-
         act_inspect = menu.addAction("Inspect Process")
+
+        menu.addSeparator()
+
+        # Copy Submenu
+        copy_menu = menu.addMenu("Copy")
+        act_cp_addr = copy_menu.addAction("Copy Window Address")
+        act_cp_app = copy_menu.addAction("Copy App ID / Class")
+        act_cp_title = copy_menu.addAction("Copy Window Title")
+        act_cp_pid = copy_menu.addAction("Copy PID")
+        act_cp_geom = copy_menu.addAction("Copy Geometry")
+        act_cp_row = copy_menu.addAction("Copy Row Data (TSV)")
+        act_cp_json = copy_menu.addAction("Copy Window JSON")
+
         menu.addSeparator()
         act_close = menu.addAction("Close Window")
         act_kill = menu.addAction("Force Kill (SIGKILL)")
@@ -182,6 +207,21 @@ class WindowTableWidget(QWidget):
         elif action == act_inspect:
             if win.pid > 0:
                 self.inspectProcessRequested.emit(win.pid)
+        elif action == act_cp_addr:
+            QApplication.clipboard().setText(win.address)
+        elif action == act_cp_app:
+            QApplication.clipboard().setText(win.display_app_id)
+        elif action == act_cp_title:
+            QApplication.clipboard().setText(win.title)
+        elif action == act_cp_pid:
+            QApplication.clipboard().setText(str(win.pid))
+        elif action == act_cp_geom:
+            QApplication.clipboard().setText(win.geometry_str)
+        elif action == act_cp_row:
+            row_text = f"{win.display_app_id}\t{win.display_title}\t{win.pid}\t{win.workspace_name}\t{win.geometry_str}\t{win.memory_mb:.1f} MB\t{win.address}"
+            QApplication.clipboard().setText(row_text)
+        elif action == act_cp_json:
+            QApplication.clipboard().setText(json.dumps(win.to_dict(), indent=2))
         elif action == act_close:
             self.closeRequested.emit(win.address)
         elif action == act_kill:

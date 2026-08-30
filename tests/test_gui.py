@@ -45,6 +45,10 @@ def test_active_card_widget(qapp):
     card.update_window(sample_win)
     assert card.title_label.text() == "Terminal"
     assert "9999" in card.pid_label.text()
+    assert card.details_table.rowCount() == 4
+    assert card.details_table.item(0, 1).text() == "kitty"
+    card._on_copy_json()
+    assert "0x123" in QApplication.clipboard().text()
     qapp.processEvents()
 
 
@@ -60,6 +64,11 @@ def test_window_table_widget(qapp):
     # Test search filter
     table.update_data(sample_windows, filter_text="firefox")
     assert table.table.rowCount() == 1
+
+    # Test copy row
+    table.table.selectRow(0)
+    table._copy_selected_row()
+    assert "firefox" in QApplication.clipboard().text()
     qapp.processEvents()
 
 

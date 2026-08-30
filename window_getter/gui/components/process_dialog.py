@@ -1,14 +1,14 @@
 """
-Rich Process Details Inspector Dialog with Real-Time Live Updating Metrics for PyQt6 GUI.
+Rich Process Details Inspector Dialog with Real-Time Live Updating Metrics and Clipboard Copy Support for PyQt6 GUI.
 """
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
     QTabWidget, QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QAbstractItemView, QComboBox
+    QAbstractItemView, QComboBox, QMenu, QApplication
 )
-from PyQt6.QtGui import QFont, QColor
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QColor, QKeySequence
+from PyQt6.QtCore import Qt, QTimer, QPoint
 from window_getter.core.proc import get_process_info
 
 
@@ -32,10 +32,11 @@ class ProcessInspectorDialog(QDialog):
 
         info = get_process_info(self.pid)
 
-        # Header Bar with Live Indicator & Rate Selector
+        # Header Bar with Rate Selector
         header_layout = QHBoxLayout()
         self.header_title = QLabel(f"Process Inspector: {info.name or 'Process'} (PID {self.pid})")
         self.header_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        self.header_title.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         header_layout.addWidget(self.header_title)
         header_layout.addStretch()
 
@@ -70,6 +71,8 @@ class ProcessInspectorDialog(QDialog):
         self.details_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.details_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.details_table.setAlternatingRowColors(True)
+        self.details_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.details_table.customContextMenuRequested.connect(self._show_details_context_menu)
         self.details_table.setStyleSheet("""
             QTableWidget {
                 background-color: #1e1e1e;
@@ -176,6 +179,8 @@ class ProcessInspectorDialog(QDialog):
         self.env_table.setColumnWidth(0, 240)
         self.env_table.verticalHeader().setVisible(False)
         self.env_table.setAlternatingRowColors(True)
+        self.env_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.env_table.customContextMenuRequested.connect(self._show_env_context_menu)
         self.env_table.setStyleSheet("""
             QTableWidget {
                 background-color: #1e1e1e;
@@ -222,6 +227,11 @@ class ProcessInspectorDialog(QDialog):
 
         # Bottom buttons
         btn_layout = QHBoxLayout()
+
+        self.copy_all_btn = QPushButton("Copy Overview")
+        self.copy_all_btn.clicked.connect(self._copy_all_overview)
+        btn_layout.addWidget(self.copy_all_btn)
+
         btn_layout.addStretch()
 
         close_btn = QPushButton("Close")
@@ -232,6 +242,108 @@ class ProcessInspectorDialog(QDialog):
 
         # Populate initial values
         self._update_ui_with_info(info, initial=True)
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.Copy):
+            current_tab = self.tabs.currentIndex()
+            if current_tab == 0:
+                row = self.details_table.currentRow()
+                if row >= 0:
+                    val_item = self.details_table.item(row, 1)
+                    if val_item:
+                        QApplication.clipboard().setText(val_item.text())
+                        return
+            elif current_tab == 2:
+                row = self.env_table.currentRow()
+                if row >= 0:
+                    val_item = self.env_table.item(row, 1)
+                    if val_item:
+                        QApplication.clipboard().setText(val_item.text())
+                        return
+        super().keyPressEvent(event)
+
+    def _show_details_context_menu(self, pos: QPoint):
+        row = self.details_table.rowAt(pos.y())
+        if row < 0:
+            return
+
+        prop_item = self.details_table.item(row, 0)
+        val_item = self.details_table.item(row, 1)
+        if not prop_item or not val_item:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #454545;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 18px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #454545;
+            }
+        """)
+
+        act_cp_val = menu.addAction(f"Copy Value ({val_item.text()[:25]}...)")
+        act_cp_val.triggered.connect(lambda: QApplication.clipboard().setText(val_item.text()))
+
+        act_cp_both = menu.addAction(f"Copy '{prop_item.text()}: {val_item.text()[:20]}'")
+        act_cp_both.triggered.connect(lambda: QApplication.clipboard().setText(f"{prop_item.text()}: {val_item.text()}"))
+
+        menu.addSeparator()
+        act_cp_all = menu.addAction("Copy All Overview Properties")
+        act_cp_all.triggered.connect(self._copy_all_overview)
+
+        menu.exec(self.details_table.viewport().mapToGlobal(pos))
+
+    def _show_env_context_menu(self, pos: QPoint):
+        row = self.env_table.rowAt(pos.y())
+        if row < 0:
+            return
+
+        k_item = self.env_table.item(row, 0)
+        v_item = self.env_table.item(row, 1)
+        if not k_item or not v_item:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #454545;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 18px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #454545;
+            }
+        """)
+
+        act_cp_val = menu.addAction("Copy Value")
+        act_cp_val.triggered.connect(lambda: QApplication.clipboard().setText(v_item.text()))
+
+        act_cp_kv = menu.addAction(f"Copy {k_item.text()}={v_item.text()[:20]}...")
+        act_cp_kv.triggered.connect(lambda: QApplication.clipboard().setText(f"{k_item.text()}={v_item.text()}"))
+
+        menu.exec(self.env_table.viewport().mapToGlobal(pos))
+
+    def _copy_all_overview(self):
+        lines = []
+        for r in range(self.details_table.rowCount()):
+            p = self.details_table.item(r, 0)
+            v = self.details_table.item(r, 1)
+            if p and v:
+                lines.append(f"{p.text()}: {v.text()}")
+        QApplication.clipboard().setText("\n".join(lines))
 
     def _on_rate_changed(self):
         rate = self.rate_combo.currentData()

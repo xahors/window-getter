@@ -3,8 +3,9 @@ Interactive 2D Desktop Workspace Map Visualizer with Grid Layout and Context Men
 """
 
 import math
+import json
 from typing import List, Dict, Optional
-from PyQt6.QtWidgets import QWidget, QMenu
+from PyQt6.QtWidgets import QWidget, QMenu, QApplication
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent, QContextMenuEvent
 from PyQt6.QtCore import Qt, QRectF, QPoint, pyqtSignal
 from window_getter.core.models import WindowInfo
@@ -289,6 +290,16 @@ class WorkspaceVisualizer(QWidget):
         act_rule = menu.addAction("Create Rule")
         act_relaunch = menu.addAction("Relaunch Window")
         act_inspect = menu.addAction("Inspect Process")
+
+        menu.addSeparator()
+
+        copy_menu = menu.addMenu("Copy")
+        act_cp_addr = copy_menu.addAction("Copy Window Address")
+        act_cp_app = copy_menu.addAction("Copy App ID / Class")
+        act_cp_title = copy_menu.addAction("Copy Window Title")
+        act_cp_pid = copy_menu.addAction("Copy PID")
+        act_cp_json = copy_menu.addAction("Copy Window JSON")
+
         menu.addSeparator()
         act_close = menu.addAction("Close Window")
         act_kill = menu.addAction("Force Kill (SIGKILL)")
@@ -307,6 +318,16 @@ class WorkspaceVisualizer(QWidget):
         elif action == act_inspect:
             if win.pid > 0:
                 self.inspectProcessRequested.emit(win.pid)
+        elif action == act_cp_addr:
+            QApplication.clipboard().setText(win.address)
+        elif action == act_cp_app:
+            QApplication.clipboard().setText(win.display_app_id)
+        elif action == act_cp_title:
+            QApplication.clipboard().setText(win.title)
+        elif action == act_cp_pid:
+            QApplication.clipboard().setText(str(win.pid))
+        elif action == act_cp_json:
+            QApplication.clipboard().setText(json.dumps(win.to_dict(), indent=2))
         elif action == act_close:
             self.closeRequested.emit(win.address)
         elif action == act_kill:
