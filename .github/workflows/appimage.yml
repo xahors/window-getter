@@ -134,6 +134,8 @@ jobs:
           #!/bin/sh
           SELF=$(readlink -f "$0")
           HERE=${SELF%/*}
+          export APPDIR="${HERE}"
+          export LD_LIBRARY_PATH_ORIG="${LD_LIBRARY_PATH}"
           export PATH="${HERE}/usr/bin:${PATH}"
           export LD_LIBRARY_PATH="${HERE}/usr/bin:${LD_LIBRARY_PATH}"
           exec "${HERE}/usr/bin/window-getter" "$@"

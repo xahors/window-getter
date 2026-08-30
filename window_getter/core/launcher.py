@@ -9,6 +9,7 @@ import subprocess
 import shutil
 import re
 from typing import Dict, List, Optional, Tuple
+from window_getter.core.compat import get_clean_env
 
 
 class DesktopResolver:
@@ -107,20 +108,21 @@ def clean_exec_command(exec_str: str) -> str:
 
 
 def _execute_cmd(cmd, cwd: Optional[str] = None):
-    """Execute command as a detached background process."""
+    """Execute command as a detached background process with clean host environment."""
     valid_cwd = cwd if (cwd and os.path.exists(cwd)) else None
+    clean_env = get_clean_env()
 
     if isinstance(cmd, list):
-        subprocess.Popen(cmd, cwd=valid_cwd, start_new_session=True)
+        subprocess.Popen(cmd, cwd=valid_cwd, start_new_session=True, env=clean_env)
     elif isinstance(cmd, str):
         try:
             args = shlex.split(cmd)
             if args:
-                subprocess.Popen(args, cwd=valid_cwd, start_new_session=True)
+                subprocess.Popen(args, cwd=valid_cwd, start_new_session=True, env=clean_env)
             else:
-                subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True)
+                subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True, env=clean_env)
         except Exception:
-            subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True)
+            subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True, env=clean_env)
 
 
 def get_default_relaunch_command(

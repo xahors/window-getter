@@ -1,5 +1,5 @@
 """
-X11 backend for window-getter using xdotool / xprop / wmctrl.
+X11 backend for window-getter using xdotool / xprop with clean host environment.
 """
 
 import subprocess
@@ -8,6 +8,7 @@ from typing import List, Optional
 from window_getter.core.models import WindowInfo
 from window_getter.core.proc import get_process_info
 from window_getter.core.launcher import get_desktop_entry
+from window_getter.core.compat import get_clean_env
 
 
 class X11Backend:
@@ -19,7 +20,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             return res.returncode == 0
         except Exception:
@@ -33,7 +35,8 @@ class X11Backend:
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=2,
-                check=True
+                check=True,
+                env=get_clean_env()
             )
             win_id = res.stdout.strip()
             if not win_id:
@@ -49,7 +52,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=3
+                timeout=3,
+                env=get_clean_env()
             )
             win_ids = [w.strip() for w in res.stdout.splitlines() if w.strip()]
             active_win = self.get_active_window()
@@ -67,14 +71,14 @@ class X11Backend:
 
     def close_window(self, win_id: str) -> bool:
         try:
-            res = subprocess.run(["xdotool", "windowclose", win_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = subprocess.run(["xdotool", "windowclose", win_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_clean_env())
             return res.returncode == 0
         except Exception:
             return False
 
     def focus_window(self, win_id: str) -> bool:
         try:
-            res = subprocess.run(["xdotool", "windowactivate", win_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = subprocess.run(["xdotool", "windowactivate", win_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_clean_env())
             return res.returncode == 0
         except Exception:
             return False
@@ -87,7 +91,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             geo = {}
             for line in geo_res.stdout.splitlines():
@@ -106,7 +111,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             pid = int(pid_res.stdout.strip()) if pid_res.stdout.strip().isdigit() else 0
 
@@ -116,7 +122,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             title = title_res.stdout.strip()
 
@@ -127,7 +134,8 @@ class X11Backend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             if '="' in xprop_res.stdout:
                 matches = re.findall(r'"([^"]*)"', xprop_res.stdout)

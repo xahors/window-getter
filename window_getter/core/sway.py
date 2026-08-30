@@ -1,5 +1,5 @@
 """
-Sway / i3 compositor backend for window-getter using swaymsg JSON API.
+Sway / i3 compositor backend for window-getter using swaymsg JSON API with clean host environment.
 """
 
 import json
@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any
 from window_getter.core.models import WindowInfo
 from window_getter.core.proc import get_process_info
 from window_getter.core.launcher import get_desktop_entry
+from window_getter.core.compat import get_clean_env
 
 
 class SwayBackend:
@@ -19,7 +20,8 @@ class SwayBackend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
             )
             return res.returncode == 0
         except Exception:
@@ -33,7 +35,8 @@ class SwayBackend:
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=3,
-                check=True
+                check=True,
+                env=get_clean_env()
             )
             tree = json.loads(res.stdout)
             windows: List[WindowInfo] = []
@@ -53,7 +56,7 @@ class SwayBackend:
     def close_window(self, address_or_pid: str) -> bool:
         try:
             cmd = ["swaymsg", f"[id={address_or_pid}] kill"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=get_clean_env())
             return res.returncode == 0
         except Exception:
             return False
@@ -61,7 +64,7 @@ class SwayBackend:
     def focus_window(self, address_or_pid: str) -> bool:
         try:
             cmd = ["swaymsg", f"[id={address_or_pid}] focus"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=get_clean_env())
             return res.returncode == 0
         except Exception:
             return False
@@ -69,7 +72,7 @@ class SwayBackend:
     def move_to_workspace(self, address_or_pid: str, workspace: str) -> bool:
         try:
             cmd = ["swaymsg", f"[id={address_or_pid}] move container to workspace {workspace}"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=get_clean_env())
             return res.returncode == 0
         except Exception:
             return False

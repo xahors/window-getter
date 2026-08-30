@@ -1,151 +1,218 @@
 """
-Hyprland compositor backend for window-getter using hyprctl JSON IPC.
+Hyprland compositor backend for window-getter supporting direct UNIX domain socket IPC and hyprctl fallback.
 """
 
+import os
 import json
+import socket
 import subprocess
 from typing import List, Optional, Dict, Any
 from window_getter.core.models import WindowInfo
 from window_getter.core.proc import get_process_info
 from window_getter.core.launcher import get_desktop_entry
+from window_getter.core.compat import get_clean_env
 
 
 class HyprlandBackend:
     @staticmethod
+    def get_socket_path() -> Optional[str]:
+        """Find the active Hyprland UNIX domain command socket."""
+        sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+        uid = os.getuid() if hasattr(os, "getuid") else 1000
+
+        candidate_paths = []
+        if sig:
+            candidate_paths.extend([
+                f"/run/user/{uid}/hypr/{sig}/.socket.sock",
+                f"/tmp/hypr/{sig}/.socket.sock",
+            ])
+
+        # Also search user runtime dir if signature env was not set or changed
+        base_user_dir = f"/run/user/{uid}/hypr"
+        if os.path.exists(base_user_dir):
+            try:
+                for entry in os.listdir(base_user_dir):
+                    sock = os.path.join(base_user_dir, entry, ".socket.sock")
+                    if os.path.exists(sock):
+                        candidate_paths.append(sock)
+            except Exception:
+                pass
+
+        base_tmp_dir = "/tmp/hypr"
+        if os.path.exists(base_tmp_dir):
+            try:
+                for entry in os.listdir(base_tmp_dir):
+                    sock = os.path.join(base_tmp_dir, entry, ".socket.sock")
+                    if os.path.exists(sock):
+                        candidate_paths.append(sock)
+            except Exception:
+                pass
+
+        for p in candidate_paths:
+            if os.path.exists(p):
+                return p
+        return None
+
+    @staticmethod
+    def _query_socket(cmd: str) -> Optional[str]:
+        """Send command string to Hyprland UNIX domain socket and return response."""
+        sock_path = HyprlandBackend.get_socket_path()
+        if not sock_path:
+            return None
+
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect(sock_path)
+            s.sendall(cmd.encode("utf-8"))
+            chunks = []
+            while True:
+                try:
+                    data = s.recv(8192)
+                    if not data:
+                        break
+                    chunks.append(data)
+                except Exception:
+                    break
+            s.close()
+            return b"".join(chunks).decode("utf-8", errors="ignore")
+        except Exception:
+            return None
+
+    @staticmethod
     def is_available() -> bool:
-        """Check if hyprctl command is present and Hyprland session is active."""
+        """Check if Hyprland session is active via direct socket or hyprctl."""
+        # 1. Direct socket check
+        sock = HyprlandBackend.get_socket_path()
+        if sock:
+            res = HyprlandBackend._query_socket("j/activewindow")
+            if res is not None:
+                return True
+
+        # 2. Subprocess check with clean env
         try:
             res = subprocess.run(
                 ["hyprctl", "activewindow", "-j"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=2
+                timeout=2,
+                env=get_clean_env()
+            )
+            return res.returncode == 0
+        except Exception:
+            return False
+
+    def _query(self, json_cmd: str, hyprctl_subcmd: List[str]) -> Optional[str]:
+        """Query Hyprland via direct socket, falling back to hyprctl with clean environment."""
+        # Try direct socket first
+        sock_res = self._query_socket(json_cmd)
+        if sock_res is not None and sock_res.strip():
+            return sock_res.strip()
+
+        # Fallback to hyprctl
+        try:
+            res = subprocess.run(
+                ["hyprctl"] + hyprctl_subcmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=3,
+                check=True,
+                env=get_clean_env()
+            )
+            return res.stdout.strip()
+        except Exception:
+            return None
+
+    def _dispatch(self, dispatch_args: str, hyprctl_args: List[str]) -> bool:
+        """Send dispatch command via socket or hyprctl."""
+        sock_res = self._query_socket(f"dispatch {dispatch_args}")
+        if sock_res is not None:
+            return "ok" in sock_res.lower() or len(sock_res) == 0
+
+        try:
+            res = subprocess.run(
+                ["hyprctl", "dispatch"] + hyprctl_args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=get_clean_env()
             )
             return res.returncode == 0
         except Exception:
             return False
 
     def get_windows(self) -> List[WindowInfo]:
-        """Fetch all managed windows from Hyprland via `hyprctl clients -j`."""
+        """Fetch all managed windows from Hyprland."""
+        raw_json = self._query("j/clients", ["clients", "-j"])
+        if not raw_json:
+            return []
+
         try:
-            res = subprocess.run(
-                ["hyprctl", "clients", "-j"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=3,
-                check=True
-            )
-            data = json.loads(res.stdout)
+            data = json.loads(raw_json)
             active_addr = self.get_active_address()
-            
+
             windows: List[WindowInfo] = []
             for item in data:
                 win = self._parse_hyprland_window(item, active_addr)
                 windows.append(win)
             return windows
         except Exception as e:
-            print(f"[HyprlandBackend] Error getting windows: {e}")
+            print(f"[HyprlandBackend] Error parsing windows: {e}")
             return []
 
     def get_active_window(self) -> Optional[WindowInfo]:
-        """Fetch active/focused window from Hyprland via `hyprctl activewindow -j`."""
+        """Fetch active/focused window from Hyprland."""
+        raw_json = self._query("j/activewindow", ["activewindow", "-j"])
+        if not raw_json or raw_json == "{}":
+            return None
+
         try:
-            res = subprocess.run(
-                ["hyprctl", "activewindow", "-j"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=3,
-                check=True
-            )
-            if not res.stdout.strip() or res.stdout.strip() == "{}":
-                return None
-            data = json.loads(res.stdout)
+            data = json.loads(raw_json)
             if not data.get("address"):
                 return None
             return self._parse_hyprland_window(data, active_addr=data.get("address"), is_active_override=True)
         except Exception as e:
-            print(f"[HyprlandBackend] Error getting active window: {e}")
+            print(f"[HyprlandBackend] Error parsing active window: {e}")
             return None
 
     def get_active_address(self) -> str:
         """Get active window address string."""
-        try:
-            res = subprocess.run(
-                ["hyprctl", "activewindow", "-j"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=2
-            )
-            if res.returncode == 0 and res.stdout.strip():
-                data = json.loads(res.stdout)
+        raw_json = self._query("j/activewindow", ["activewindow", "-j"])
+        if raw_json and raw_json != "{}":
+            try:
+                data = json.loads(raw_json)
                 return data.get("address", "")
-        except Exception:
-            pass
+            except Exception:
+                pass
         return ""
 
     def close_window(self, address_or_pid: str) -> bool:
-        """Close window using `hyprctl dispatch closewindow address:<addr>`."""
-        try:
-            target = address_or_pid
-            if not target.startswith("0x"):
-                target = f"address:{address_or_pid}"
-            else:
-                target = f"address:{address_or_pid}"
-                
-            cmd = ["hyprctl", "dispatch", "closewindow", target]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return res.returncode == 0
-        except Exception as e:
-            print(f"[HyprlandBackend] Error closing window: {e}")
-            return False
+        """Close window using `closewindow address:<addr>`."""
+        target = address_or_pid if address_or_pid.startswith("address:") else f"address:{address_or_pid}"
+        return self._dispatch(f"closewindow {target}", ["closewindow", target])
 
     def focus_window(self, address: str) -> bool:
-        """Focus window using `hyprctl dispatch focuswindow address:<addr>`."""
-        try:
-            target = address if address.startswith("address:") else f"address:{address}"
-            cmd = ["hyprctl", "dispatch", "focuswindow", target]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return res.returncode == 0
-        except Exception as e:
-            print(f"[HyprlandBackend] Error focusing window: {e}")
-            return False
+        """Focus window using `focuswindow address:<addr>`."""
+        target = address if address.startswith("address:") else f"address:{address}"
+        return self._dispatch(f"focuswindow {target}", ["focuswindow", target])
 
     def move_to_workspace(self, address: str, workspace_name_or_id: str) -> bool:
-        """Move window to workspace using `hyprctl dispatch movetoworkspace <ws>,address:<addr>`."""
-        try:
-            target = address if address.startswith("address:") else f"address:{address}"
-            cmd = ["hyprctl", "dispatch", "movetoworkspace", f"{workspace_name_or_id},{target}"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return res.returncode == 0
-        except Exception as e:
-            print(f"[HyprlandBackend] Error moving to workspace: {e}")
-            return False
+        """Move window to workspace using `movetoworkspace <ws>,address:<addr>`."""
+        target = address if address.startswith("address:") else f"address:{address}"
+        arg = f"{workspace_name_or_id},{target}"
+        return self._dispatch(f"movetoworkspace {arg}", ["movetoworkspace", arg])
 
     def toggle_floating(self, address: str) -> bool:
-        """Toggle floating mode using `hyprctl dispatch togglefloating address:<addr>`."""
-        try:
-            target = address if address.startswith("address:") else f"address:{address}"
-            cmd = ["hyprctl", "dispatch", "togglefloating", target]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return res.returncode == 0
-        except Exception as e:
-            print(f"[HyprlandBackend] Error toggling floating: {e}")
-            return False
+        """Toggle floating mode using `togglefloating address:<addr>`."""
+        target = address if address.startswith("address:") else f"address:{address}"
+        return self._dispatch(f"togglefloating {target}", ["togglefloating", target])
 
     def toggle_fullscreen(self, address: str) -> bool:
-        """Toggle fullscreen mode using `hyprctl dispatch fullscreen 0` after focusing window."""
-        try:
-            self.focus_window(address)
-            cmd = ["hyprctl", "dispatch", "fullscreen", "0"]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return res.returncode == 0
-        except Exception as e:
-            print(f"[HyprlandBackend] Error toggling fullscreen: {e}")
-            return False
+        """Toggle fullscreen mode using `fullscreen 0`."""
+        self.focus_window(address)
+        return self._dispatch("fullscreen 0", ["fullscreen", "0"])
 
     def _parse_hyprland_window(self, item: Dict[str, Any], active_addr: str = "", is_active_override: bool = False) -> WindowInfo:
         addr = item.get("address", "")

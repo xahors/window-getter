@@ -88,3 +88,21 @@ def test_launcher_helpers():
     cmd = get_default_relaunch_command(app_id="kitty", cmdline=["kitty"])
     assert "kitty" in cmd
 
+
+def test_compat_clean_env(monkeypatch):
+    import os
+    from window_getter.core.compat import get_clean_env
+
+    monkeypatch.setenv("APPDIR", "/tmp/.mount_window123")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/.mount_window123/usr/lib:/usr/local/lib")
+
+    clean = get_clean_env()
+    assert "/tmp/.mount_window123" not in clean.get("LD_LIBRARY_PATH", "")
+    assert "/usr/local/lib" in clean.get("LD_LIBRARY_PATH", "")
+
+
+def test_backend_detection():
+    detector = WindowDetector()
+    assert detector.backend_name in ["Hyprland", "Sway", "X11", "Generic / Unsupported"]
+
+
