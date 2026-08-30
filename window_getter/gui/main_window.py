@@ -5,7 +5,7 @@ PyQt6 Main Window Application Shell for window-getter.
 from typing import List, Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel,
-    QLineEdit, QComboBox, QPushButton, QStatusBar, QMessageBox, QInputDialog
+    QLineEdit, QComboBox, QPushButton, QStatusBar, QMessageBox
 )
 from PyQt6.QtCore import QTimer, Qt, QEvent
 
@@ -89,15 +89,10 @@ class MainWindow(QMainWindow):
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh_data)
 
-        new_app_btn = QPushButton("Launch App")
-        new_app_btn.setObjectName("primaryBtn")
-        new_app_btn.clicked.connect(self._launch_new_app)
-
         header_layout.addWidget(self.search_input)
         header_layout.addWidget(self.ws_combo)
         header_layout.addWidget(self.refresh_combo)
         header_layout.addWidget(refresh_btn)
-        header_layout.addWidget(new_app_btn)
 
         main_layout.addLayout(header_layout)
 
@@ -137,6 +132,13 @@ class MainWindow(QMainWindow):
         self.visualizer = WorkspaceVisualizer()
         self.visualizer.windowClicked.connect(self._on_focus_window)
         self.visualizer.workspaceSelected.connect(self._on_workspace_selected_from_map)
+        self.visualizer.focusRequested.connect(self._on_focus_window)
+        self.visualizer.relaunchRequested.connect(self._on_relaunch_dialog)
+        self.visualizer.closeRequested.connect(self._on_close_window)
+        self.visualizer.killRequested.connect(self._on_kill_process)
+        self.visualizer.ruleRequested.connect(self._on_rule_dialog)
+        self.visualizer.inspectProcessRequested.connect(self._on_inspect_process)
+        self.visualizer.windowSelected.connect(self._on_window_selected)
         self.tabs.addTab(self.visualizer, "Workspace Map")
 
         main_layout.addWidget(self.tabs)
@@ -280,9 +282,4 @@ class MainWindow(QMainWindow):
         dlg = ProcessInspectorDialog(pid, self)
         dlg.exec()
 
-    def _launch_new_app(self):
-        cmd, ok = QInputDialog.getText(self, "Launch New Application", "Enter shell command to execute:")
-        if ok and cmd.strip():
-            success, msg = self.detector.relaunch_window("", custom_command=cmd.strip())
-            QMessageBox.information(self, "Launch Result", msg)
 

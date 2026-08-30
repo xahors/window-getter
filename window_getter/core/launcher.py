@@ -1,5 +1,5 @@
 """
-Application launcher and desktop file resolver module with workspace dispatch support.
+Application launcher and desktop file resolver module for window-getter.
 """
 
 import os
@@ -37,7 +37,7 @@ class DesktopResolver:
                     key = filename.lower().replace(".desktop", "")
                     if key not in self._cache:
                         self._cache[key] = entry_data
-                    
+
                     wm_class = entry_data.get("StartupWMClass", "").lower()
                     if wm_class and wm_class not in self._cache:
                         self._cache[wm_class] = entry_data
@@ -57,7 +57,7 @@ class DesktopResolver:
                     elif line.startswith("[") and line.endswith("]"):
                         in_main_section = False
                         continue
-                    
+
                     if in_main_section and "=" in line and not line.startswith("#"):
                         k, v = line.split("=", 1)
                         data[k.strip()] = v.strip()
@@ -99,34 +99,56 @@ def get_desktop_entry(app_id: str, exe_path: str = "") -> Optional[Dict[str, str
 
 
 def clean_exec_command(exec_str: str) -> str:
-    """Strip desktop field codes like %u, %F, %U, %f, %k, %c, %i."""
+    """Strip desktop field codes like %u, %F, %U, %f, %k, %c, %i, %d, %D, %n, %N, %v, %m."""
     if not exec_str:
         return ""
-    cleaned = re.sub(r"%[fFuUiIkKcCnNvm]", "", exec_str).strip()
+    cleaned = re.sub(r"%[fFuUiIkKcCnNvmDd]", "", exec_str).strip()
     return cleaned
 
 
-def _execute_cmd(cmd, target_workspace: str = "", cwd: str = None):
-    """Execute command with optional workspace dispatching."""
+def _execute_cmd(cmd, cwd: Optional[str] = None):
+    """Execute command as a detached background process."""
     valid_cwd = cwd if (cwd and os.path.exists(cwd)) else None
-    cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
 
-    # Hyprland Workspace Dispatcher
-    if target_workspace and shutil.which("hyprctl"):
-        hypr_cmd = f"hyprctl dispatch exec [workspace {target_workspace}] -- {cmd_str}"
-        subprocess.Popen(hypr_cmd, shell=True, cwd=valid_cwd, start_new_session=True)
-        return
-    # Sway Workspace Dispatcher
-    elif target_workspace and shutil.which("swaymsg"):
-        sway_cmd = f"swaymsg 'exec [workspace {target_workspace}] {cmd_str}'"
-        subprocess.Popen(sway_cmd, shell=True, cwd=valid_cwd, start_new_session=True)
-        return
-
-    # Standard Fallback Dispatcher
-    if isinstance(cmd, list) and not target_workspace:
+    if isinstance(cmd, list):
         subprocess.Popen(cmd, cwd=valid_cwd, start_new_session=True)
-    else:
-        subprocess.Popen(cmd_str, shell=True, cwd=valid_cwd, start_new_session=True)
+    elif isinstance(cmd, str):
+        try:
+            args = shlex.split(cmd)
+            if args:
+                subprocess.Popen(args, cwd=valid_cwd, start_new_session=True)
+            else:
+                subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True)
+        except Exception:
+            subprocess.Popen(cmd, shell=True, cwd=valid_cwd, start_new_session=True)
+
+
+def get_default_relaunch_command(
+    app_id: str = "",
+    exe_path: str = "",
+    cmdline: List[str] = None
+) -> str:
+    """Determine the most reliable default shell command to relaunch a window."""
+    # 1. Check desktop entry (highest fidelity for standard desktop applications)
+    entry = get_desktop_entry(app_id, exe_path)
+    if entry and entry.get("Exec"):
+        cleaned = clean_exec_command(entry["Exec"])
+        if cleaned:
+            return cleaned
+
+    # 2. Check cmdline
+    if cmdline and len(cmdline) > 0 and cmdline[0]:
+        return " ".join(cmdline)
+
+    # 3. Fallback to executable path
+    if exe_path and os.path.exists(exe_path):
+        return exe_path
+
+    # 4. Fallback to app_id
+    if app_id:
+        return app_id
+
+    return ""
 
 
 def relaunch_window(
@@ -134,41 +156,41 @@ def relaunch_window(
     exe_path: str = "",
     app_id: str = "",
     cwd: str = "",
-    custom_command: str = "",
-    target_workspace: str = ""
+    custom_command: str = ""
 ) -> Tuple[bool, str]:
     """
-    Relaunches an application using custom command, cmdline, desktop file exec, or exe_path,
-    targeting the specified workspace.
+    Relaunches an application using custom command, desktop entry, cmdline, or exe_path.
     Returns (success: bool, message: str).
     """
     try:
-        ws_info = f" on workspace '{target_workspace}'" if target_workspace else ""
-
         # 1. Custom Command provided by user
         if custom_command and custom_command.strip():
             cmd = custom_command.strip()
-            _execute_cmd(cmd, target_workspace=target_workspace, cwd=cwd)
-            return True, f"Launched custom command{ws_info}: {cmd}"
+            _execute_cmd(cmd, cwd=cwd)
+            return True, f"Launched command: {cmd}"
 
-        # 2. Cmdline list from /proc/<pid>/cmdline
-        if cmdline and len(cmdline) > 0 and cmdline[0]:
-            _execute_cmd(cmdline, target_workspace=target_workspace, cwd=cwd)
-            return True, f"Relaunched via cmdline{ws_info}: {' '.join(cmdline)}"
-
-        # 3. Desktop Entry Exec command
+        # 2. Desktop Entry Exec command
         entry = get_desktop_entry(app_id, exe_path)
         if entry and entry.get("Exec"):
-            raw_exec = entry["Exec"]
-            cleaned = clean_exec_command(raw_exec)
+            cleaned = clean_exec_command(entry["Exec"])
             if cleaned:
-                _execute_cmd(cleaned, target_workspace=target_workspace, cwd=cwd)
-                return True, f"Relaunched via desktop entry{ws_info}: {cleaned}"
+                _execute_cmd(cleaned, cwd=cwd)
+                return True, f"Relaunched via desktop entry: {cleaned}"
+
+        # 3. Cmdline list from /proc/<pid>/cmdline
+        if cmdline and len(cmdline) > 0 and cmdline[0]:
+            _execute_cmd(cmdline, cwd=cwd)
+            return True, f"Relaunched via cmdline: {' '.join(cmdline)}"
 
         # 4. Fallback to exe_path
         if exe_path and os.path.exists(exe_path):
-            _execute_cmd(exe_path, target_workspace=target_workspace, cwd=cwd)
-            return True, f"Relaunched via executable{ws_info}: {exe_path}"
+            _execute_cmd(exe_path, cwd=cwd)
+            return True, f"Relaunched via executable: {exe_path}"
+
+        # 5. Fallback to app_id
+        if app_id:
+            _execute_cmd(app_id, cwd=cwd)
+            return True, f"Relaunched via App ID: {app_id}"
 
         return False, "Could not determine valid command to relaunch window."
 
@@ -176,13 +198,13 @@ def relaunch_window(
         return False, f"Failed to relaunch application: {str(e)}"
 
 
-def launch_new_command(command_str: str, cwd: str = "", target_workspace: str = "") -> Tuple[bool, str]:
+def launch_new_command(command_str: str, cwd: str = "") -> Tuple[bool, str]:
     """Launch any new shell command as a background process."""
     try:
         if not command_str or not command_str.strip():
             return False, "Command cannot be empty."
 
-        _execute_cmd(command_str.strip(), target_workspace=target_workspace, cwd=cwd)
+        _execute_cmd(command_str.strip(), cwd=cwd)
         return True, f"Successfully started: {command_str}"
     except Exception as e:
         return False, f"Error launching command: {str(e)}"

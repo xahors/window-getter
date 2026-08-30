@@ -78,3 +78,13 @@ def test_detector_active_window():
     if active:
         assert isinstance(active, WindowInfo)
         assert active.pid > 0
+
+
+def test_launcher_helpers():
+    from window_getter.core.launcher import clean_exec_command, get_default_relaunch_command
+    assert clean_exec_command("firefox %u") == "firefox"
+    assert clean_exec_command("steam %U") == "steam"
+
+    cmd = get_default_relaunch_command(app_id="kitty", cmdline=["kitty"])
+    assert "kitty" in cmd
+

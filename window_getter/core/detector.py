@@ -13,6 +13,25 @@ from window_getter.core.x11 import X11Backend
 from window_getter.core.launcher import relaunch_window as core_relaunch_window, launch_new_command
 
 
+class GenericBackend:
+    """Fallback backend when no supported window manager IPC is active."""
+    @staticmethod
+    def is_available() -> bool:
+        return True
+
+    def get_windows(self) -> List[WindowInfo]:
+        return []
+
+    def get_active_window(self) -> Optional[WindowInfo]:
+        return None
+
+    def close_window(self, address: str) -> bool:
+        return False
+
+    def focus_window(self, address: str) -> bool:
+        return False
+
+
 class WindowDetector:
     def __init__(self):
         self._backend = None
@@ -20,27 +39,35 @@ class WindowDetector:
 
     def _detect_backend(self):
         """Auto-detect active window manager backend."""
-        # 1. Hyprland
-        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or HyprlandBackend.is_available():
+        # 1. Hyprland (Check signature first, or verify hyprctl returns 0)
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and HyprlandBackend.is_available():
+            self._backend = HyprlandBackend()
+            self.backend_name = "Hyprland"
+            return
+        elif HyprlandBackend.is_available():
             self._backend = HyprlandBackend()
             self.backend_name = "Hyprland"
             return
 
-        # 2. Sway / i3
-        if os.environ.get("SWAYSOCK") or SwayBackend.is_available():
+        # 2. Sway / i3 (Check socket or swaymsg tree)
+        if (os.environ.get("SWAYSOCK") or os.environ.get("I3SOCK")) and SwayBackend.is_available():
+            self._backend = SwayBackend()
+            self.backend_name = "Sway"
+            return
+        elif SwayBackend.is_available():
             self._backend = SwayBackend()
             self.backend_name = "Sway"
             return
 
-        # 3. X11
+        # 3. X11 (Check DISPLAY and X11 tools)
         if os.environ.get("DISPLAY") and X11Backend.is_available():
             self._backend = X11Backend()
             self.backend_name = "X11"
             return
 
-        # Fallback to Hyprland as default if hyprctl works
-        self._backend = HyprlandBackend()
-        self.backend_name = "Hyprland (Fallback)"
+        # 4. Generic fallback when no supported WM is active
+        self._backend = GenericBackend()
+        self.backend_name = "Generic / Unsupported"
 
     def get_windows(self) -> List[WindowInfo]:
         """Fetch all managed GUI windows."""
@@ -72,7 +99,7 @@ class WindowDetector:
                     windows_count=0,
                     has_active=False
                 )
-            
+
             ws_info = workspaces_map[ws_key]
             ws_info.windows_count += 1
             if w.is_active:
@@ -121,21 +148,24 @@ class WindowDetector:
         """Close window by query (active, address, PID, app_id, title)."""
         win = self.find_window(query)
         if not win:
+            if query.isdigit():
+                return self.kill_process(int(query), sig=signal.SIGTERM)
             return False, f"Window matching query '{query}' not found."
 
-        # Try window manager close first
-        success = self._backend.close_window(win.address)
-        if success:
-            return True, f"Closed window '{win.display_title}' (App ID: {win.display_app_id}, Address: {win.address})."
+        # 1. Try window manager close first
+        if self._backend:
+            success = self._backend.close_window(win.address)
+            if success:
+                return True, f"Closed window '{win.display_title}' (App ID: {win.display_app_id}, Address: {win.address})."
 
-        # Fallback to graceful SIGTERM on PID
+        # 2. Fallback to graceful SIGTERM on PID
         if win.pid > 0:
             return self.kill_process(win.pid, sig=signal.SIGTERM)
 
         return False, f"Failed to close window '{win.display_title}'."
 
     def kill_process(self, pid: int, sig: int = signal.SIGKILL) -> Tuple[bool, str]:
-        """Force kill or terminate process by PID."""
+        """Force kill or terminate process by PID using POSIX signals."""
         try:
             if pid <= 0:
                 return False, "Invalid Process ID."
@@ -165,17 +195,14 @@ class WindowDetector:
         import time
         time.sleep(0.15)
 
-        # 2. Relaunch window command targeting same workspace
+        # 2. Relaunch window command
         return core_relaunch_window(
             cmdline=win.cmdline,
             exe_path=win.exe_path,
             app_id=win.app_id,
             cwd=win.cwd,
-            custom_command=custom_command,
-            target_workspace=str(win.workspace_name or win.workspace_id)
+            custom_command=custom_command
         )
-
-
 
     def focus_window(self, query: str) -> Tuple[bool, str]:
         """Bring window into focus."""
@@ -183,51 +210,19 @@ class WindowDetector:
         if not win:
             return False, f"Window matching query '{query}' not found."
 
-        success = self._backend.focus_window(win.address)
-        if success:
-            return True, f"Focused window '{win.display_title}'."
+        if self._backend:
+            success = self._backend.focus_window(win.address)
+            if success:
+                return True, f"Focused window '{win.display_title}'."
         return False, f"Failed to focus window '{win.display_title}'."
 
-    def move_to_workspace(self, query: str, workspace: str) -> Tuple[bool, str]:
-        """Move window to specified workspace."""
-        win = self.find_window(query)
-        if not win:
-            return False, f"Window matching query '{query}' not found."
 
-        if hasattr(self._backend, "move_to_workspace"):
-            success = self._backend.move_to_workspace(win.address, workspace)
-            if success:
-                return True, f"Moved window '{win.display_title}' to workspace {workspace}."
-        return False, f"Moving workspaces not supported by current backend."
-
-    def toggle_floating(self, query: str) -> Tuple[bool, str]:
-        """Toggle window floating state."""
-        win = self.find_window(query)
-        if not win:
-            return False, f"Window matching query '{query}' not found."
-
-        if hasattr(self._backend, "toggle_floating"):
-            success = self._backend.toggle_floating(win.address)
-            if success:
-                return True, f"Toggled floating for window '{win.display_title}'."
-        return False, "Toggle floating not supported by backend."
-
-    def toggle_fullscreen(self, query: str) -> Tuple[bool, str]:
-        """Toggle window fullscreen state."""
-        win = self.find_window(query)
-        if not win:
-            return False, f"Window matching query '{query}' not found."
-
-        if hasattr(self._backend, "toggle_fullscreen"):
-            success = self._backend.toggle_fullscreen(win.address)
-            if success:
-                return True, f"Toggled fullscreen for window '{win.display_title}'."
-        return False, "Toggle fullscreen not supported by backend."
-
-
-# Global detector instance
-_detector = WindowDetector()
+# Global singleton helper
+_detector_instance: Optional[WindowDetector] = None
 
 
 def get_detector() -> WindowDetector:
-    return _detector
+    global _detector_instance
+    if _detector_instance is None:
+        _detector_instance = WindowDetector()
+    return _detector_instance

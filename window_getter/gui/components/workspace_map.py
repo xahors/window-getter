@@ -1,17 +1,24 @@
 """
-Interactive 2D Desktop Workspace Map Visualizer with Grid Layout for 'All Workspaces'.
+Interactive 2D Desktop Workspace Map Visualizer with Grid Layout and Context Menu for PyQt6 GUI.
 """
 
 import math
-from typing import List, Dict
-from PyQt6.QtWidgets import QWidget
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
+from typing import List, Dict, Optional
+from PyQt6.QtWidgets import QWidget, QMenu
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent, QContextMenuEvent
+from PyQt6.QtCore import Qt, QRectF, QPoint, pyqtSignal
 from window_getter.core.models import WindowInfo
 
 
 class WorkspaceVisualizer(QWidget):
     windowClicked = pyqtSignal(str)
+    focusRequested = pyqtSignal(str)
+    ruleRequested = pyqtSignal(str)
+    relaunchRequested = pyqtSignal(str)
+    inspectProcessRequested = pyqtSignal(int)
+    closeRequested = pyqtSignal(str)
+    killRequested = pyqtSignal(int)
+    windowSelected = pyqtSignal(object)
     workspaceSelected = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -217,10 +224,18 @@ class WorkspaceVisualizer(QWidget):
                 label
             )
 
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            pos = event.position()
+    def _get_window_at_pos(self, pos) -> Optional[WindowInfo]:
+        px = pos.x() if hasattr(pos, "x") else pos[0]
+        py = pos.y() if hasattr(pos, "y") else pos[1]
+        for addr, rect in self._rect_map.items():
+            if rect.contains(px, py):
+                return next((w for w in self.windows if w.address == addr), None)
+        return None
 
+    def mousePressEvent(self, event: QMouseEvent):
+        pos = event.position()
+
+        if event.button() == Qt.MouseButton.LeftButton:
             # Check if clicked a workspace tab
             for ws_name, rect in self._ws_tab_map.items():
                 if rect.contains(pos):
@@ -230,7 +245,70 @@ class WorkspaceVisualizer(QWidget):
                     return
 
             # Check if clicked a window
-            for addr, rect in self._rect_map.items():
-                if rect.contains(pos):
-                    self.windowClicked.emit(addr)
-                    break
+            win = self._get_window_at_pos(pos)
+            if win:
+                self.windowSelected.emit(win)
+                self.windowClicked.emit(win.address)
+                self.focusRequested.emit(win.address)
+
+        super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        win = self._get_window_at_pos(event.pos())
+        if not win:
+            return
+
+        self.windowSelected.emit(win)
+        self._show_context_menu(win, event.globalPos())
+
+    def _show_context_menu(self, win: WindowInfo, global_pos: QPoint):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d2d2d;
+                color: #ffffff;
+                border: 1px solid #454545;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 18px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #454545;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #454545;
+                margin: 4px 0px;
+            }
+        """)
+
+        act_focus = menu.addAction("Focus Window")
+        act_rule = menu.addAction("Create Rule")
+        act_relaunch = menu.addAction("Relaunch Window")
+        act_inspect = menu.addAction("Inspect Process")
+        menu.addSeparator()
+        act_close = menu.addAction("Close Window")
+        act_kill = menu.addAction("Force Kill (SIGKILL)")
+
+        action = menu.exec(global_pos)
+        if not action:
+            return
+
+        if action == act_focus:
+            self.focusRequested.emit(win.address)
+            self.windowClicked.emit(win.address)
+        elif action == act_rule:
+            self.ruleRequested.emit(win.address)
+        elif action == act_relaunch:
+            self.relaunchRequested.emit(win.address)
+        elif action == act_inspect:
+            if win.pid > 0:
+                self.inspectProcessRequested.emit(win.pid)
+        elif action == act_close:
+            self.closeRequested.emit(win.address)
+        elif action == act_kill:
+            if win.pid > 0:
+                self.killRequested.emit(win.pid)

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 )
 from window_getter.core.models import WindowInfo
-from window_getter.core.launcher import relaunch_window
+from window_getter.core.launcher import relaunch_window, get_default_relaunch_command
 from window_getter.core.detector import get_detector
 
 
@@ -32,8 +32,13 @@ class RelaunchDialog(QDialog):
         lbl.setStyleSheet("color: #cccccc; font-size: 12px;")
         layout.addWidget(lbl)
 
-        # Pre-fill command line
-        default_cmd = " ".join(self.win.cmdline) if self.win.cmdline else (self.win.exe_path or self.win.display_app_id)
+        # Pre-fill command line using best resolved command
+        default_cmd = get_default_relaunch_command(
+            app_id=self.win.app_id,
+            exe_path=self.win.exe_path,
+            cmdline=self.win.cmdline
+        ) or self.win.display_app_id
+
         self.cmd_input = QLineEdit()
         self.cmd_input.setText(default_cmd)
         layout.addWidget(self.cmd_input)
@@ -71,10 +76,8 @@ class RelaunchDialog(QDialog):
             exe_path=self.win.exe_path,
             app_id=self.win.app_id,
             cwd=self.win.cwd,
-            custom_command=cmd,
-            target_workspace=str(self.win.workspace_name or self.win.workspace_id)
+            custom_command=cmd
         )
-
 
         if success:
             QMessageBox.information(self, "Window Relaunched", f"Closed active window and executed command:\n{msg}")

@@ -66,10 +66,31 @@ def test_window_table_widget(qapp):
 def test_workspace_visualizer(qapp):
     viz = WorkspaceVisualizer()
     sample_windows = [
-        WindowInfo(address="0x1", app_id="kitty", title="Kitty", pid=101, x=0, y=0, width=800, height=600),
+        WindowInfo(address="0x1", app_id="kitty", title="Kitty", pid=101, x=0, y=0, width=800, height=600, workspace_name="1"),
+        WindowInfo(address="0x2", app_id="firefox", title="Firefox", pid=102, x=800, y=0, width=800, height=600, workspace_name="2"),
     ]
     viz.update_windows(sample_windows)
+    viz.resize(800, 600)
     qapp.processEvents()
+
+    # Verify windows loaded and visualizer state
+    assert len(viz.windows) == 2
+    assert viz.target_workspace == "All"
+
+
+def test_workspace_visualizer_signals(qapp):
+    viz = WorkspaceVisualizer()
+    sample_windows = [
+        WindowInfo(address="0x1", app_id="kitty", title="Kitty", pid=101, x=0, y=0, width=800, height=600, workspace_name="1"),
+    ]
+    viz.update_windows(sample_windows)
+
+    received = {}
+    viz.focusRequested.connect(lambda addr: received.setdefault("focus", addr))
+    viz.windowSelected.connect(lambda w: received.setdefault("selected", w.address))
+
+    viz.focusRequested.emit("0x1")
+    assert received.get("focus") == "0x1"
 
 
 def test_rule_dialog(qapp):
@@ -78,5 +99,6 @@ def test_rule_dialog(qapp):
     assert dlg is not None
     assert "hl.window_rule" in dlg.code_preview.toPlainText()
     dlg.close()
+
 
 
