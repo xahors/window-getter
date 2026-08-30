@@ -1,6 +1,6 @@
 # window-getter
 
-window-getter is a Linux desktop utility and command-line tool for inspecting active graphical windows, managing process lifecycles (closing, terminating, relaunching), and generating compositor window rules for Hyprland and Sway.
+window-getter is a Linux desktop utility and command-line tool for inspecting active graphical windows, managing process lifecycles (closing, terminating, relaunching), and generating compositor window rules for Hyprland, Niri, Sway/i3, and KDE Plasma.
 
 ---
 
@@ -12,20 +12,20 @@ window-getter is a Linux desktop utility and command-line tool for inspecting ac
   - Geometry (width, height, and screen coordinates).
   - Workspace assignment and display name.
   - Window state flags (focus, floating mode, fullscreen, mapped status, XWayland flag).
-  - Process resource metrics (resident set size memory, CPU utilization, executable path, current working directory, and command-line arguments).
+  - Process resource metrics (resident set size memory, virtual memory, CPU utilization, executable path, current working directory, open file descriptors, and command-line arguments).
 - **Process and Lifecycle Management**:
   - Graceful window closing through compositor IPC or window manager dispatchers.
   - Process termination via `SIGKILL` or `SIGTERM`.
   - Application relaunching with automatic command-line reconstruction from `/proc/<pid>/cmdline`, executable binary resolution, or `.desktop` entry matching.
   - Window focus switching and workspace relocation.
-- **Compositor Backends**:
+- **Supported Environments**:
   - **Hyprland**: Direct UNIX domain socket IPC and `hyprctl` JSON queries.
   - **Niri**: Scrollable-tiling Wayland compositor IPC via `$NIRI_SOCKET` and `niri msg --json`.
   - **Sway / i3**: Native `swaymsg` and `i3-ipc` socket API.
   - **KDE Plasma (KWin)**: Wayland & X11 D-Bus interface (`org.kde.KWin`).
   - **Universal EWMH (X11)**: Universal support for XFCE (`xfwm4`), MATE (`marco`), Cinnamon (`muffin`), Openbox, LXQt, bspwm, AwesomeWM, dwm, and xmonad via `wmctrl`, `xdotool`, and `xprop`.
 - **User Interfaces**:
-  - **PyQt6 Desktop GUI**: Graphical dashboard featuring active window inspection, a searchable window table, and an interactive 2D spatial workspace map.
+  - **PyQt6 Desktop GUI**: Graphical dashboard featuring active window inspection, a searchable window table, an interactive 2D spatial workspace map with right-click context actions, and an actively updating process inspector.
   - **CLI Interface**: Subcommands for automated scripts, terminal inspection, and window management.
   - **Web Dashboard and REST API**: Lightweight HTTP server providing a browser dashboard and JSON API endpoints.
 - **Compositor Rule Generator**:
@@ -38,12 +38,6 @@ window-getter is a Linux desktop utility and command-line tool for inspecting ac
 ### Prerequisites
 
 - Python 3.9 or higher
-- One of the supported window environments:
-  - Hyprland
-  - Niri (`niri`)
-  - Sway / i3 (`swaymsg`)
-  - KDE Plasma (KWin D-Bus)
-  - Universal X11 with `wmctrl`, `xdotool`, or `xprop` installed
 - For the desktop GUI: Qt6 runtime libraries (e.g. `libxcb`, `libxkbcommon`)
 
 ### Installation from Source
@@ -165,6 +159,8 @@ cat << 'EOF' > AppDir/AppRun
 #!/bin/sh
 SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
+export APPDIR="${HERE}"
+export LD_LIBRARY_PATH_ORIG="${LD_LIBRARY_PATH}"
 export PATH="${HERE}/usr/bin:${PATH}"
 export LD_LIBRARY_PATH="${HERE}/usr/bin:${LD_LIBRARY_PATH}"
 exec "${HERE}/usr/bin/window-getter" "$@"
@@ -192,11 +188,11 @@ window-getter
 window-getter gui
 ```
 
-The GUI provides four main views:
-1. **Active Window**: Details of the currently focused window with process metrics, geometry, and action controls.
-2. **Windows Table**: Filterable and searchable table of all open windows across all workspaces.
-3. **Workspace Map**: 2D canvas displaying monitor boundaries and window positions.
-4. **Rule Generator**: Configurable dialog to generate and copy compositor rule blocks.
+The GUI provides four primary sections:
+1. **Active Window**: Live metrics of the currently focused window with process details, geometry, and lifecycle action buttons.
+2. **Windows Table**: Filterable and searchable table of all open windows across workspaces with right-click context actions.
+3. **Workspace Map**: 2D spatial canvas displaying monitor boundaries, workspace tabs, and window layouts with right-click context menus.
+4. **Process Inspector & Rule Generator**: Modal dialogs for real-time process inspection and compositor rule generation.
 
 ---
 
@@ -226,7 +222,7 @@ The CLI provides subcommands for automation, terminal queries, and window operat
 | `window-getter relaunch <query>` | Relaunches an application associated with a window. |
 | `window-getter relaunch <query> --command "<cmd>"` | Relaunches with a customized command string. |
 | `window-getter focus <query>` | Focuses the matching window. |
-| `window-getter rule <query>` | Generates a rule configuration block (`--target hyprland_lua`, `hyprland_conf`, or `sway`). |
+| `window-getter rule <query>` | Generates a rule configuration block (`--target hyprland_lua`, `hyprland_conf`, `niri`, `kwin`, or `sway`). |
 | `window-getter web` | Starts the embedded web dashboard and REST API server. |
 | `window-getter web --host <ip> --port <port>` | Configures the host interface and port (default: `127.0.0.1:8080`). |
 
@@ -276,9 +272,12 @@ window-getter/
 │   │   ├── __init__.py
 │   │   ├── models.py           # WindowInfo, ProcessInfo, and WorkspaceInfo dataclasses
 │   │   ├── detector.py         # WindowDetector base class and backend auto-discovery
-│   │   ├── hyprland.py         # Hyprland IPC backend (hyprctl)
+│   │   ├── compat.py           # Host execution environment sanitization for AppImage/PyInstaller
+│   │   ├── hyprland.py         # Hyprland UNIX domain socket & hyprctl IPC backend
+│   │   ├── niri.py             # Niri scrollable-tiling Wayland compositor backend
 │   │   ├── sway.py             # Sway/i3 IPC backend (swaymsg)
-│   │   ├── x11.py              # X11 fallback backend (xdotool, xprop, wmctrl)
+│   │   ├── kwin.py             # KDE Plasma / KWin D-Bus backend
+│   │   ├── x11.py              # Universal EWMH/X11 backend (wmctrl, xdotool, xprop)
 │   │   ├── proc.py             # Linux /proc filesystem reader and process statistics
 │   │   ├── launcher.py         # Application relauncher and .desktop resolver
 │   │   └── rules.py            # Compositor rule generation logic
@@ -291,7 +290,7 @@ window-getter/
 │   │       ├── active_card.py  # Active window hero card and metrics display
 │   │       ├── window_table.py # Searchable and sortable window table widget
 │   │       ├── workspace_map.py# 2D visual monitor and window layout canvas
-│   │       ├── process_dialog.py # Process details inspection modal
+│   │       ├── process_dialog.py # Real-time process details inspection modal
 │   │       ├── relaunch_dialog.py# Application relaunch configuration modal
 │   │       └── rule_dialog.py  # Window rule generator modal
 │   └── web/                    # Embedded web dashboard and REST server
@@ -307,11 +306,12 @@ window-getter/
 ### Component Breakdown
 
 1. **Core Layer (`window_getter.core`)**:
-   - **`detector.py`**: Identifies the running desktop environment (checking `$HYPRLAND_INSTANCE_SIGNATURE`, `$SWAYSOCK`, or `$DISPLAY`) and instantiates the appropriate backend.
-   - **Compositor Backends (`hyprland.py`, `sway.py`, `x11.py`)**: Abstract communication with window managers to query window states, monitors, and dispatch window management actions.
+   - **`detector.py`**: Identifies the running desktop environment (checking `$HYPRLAND_INSTANCE_SIGNATURE`, `$NIRI_SOCKET`, `$SWAYSOCK`, `$I3SOCK`, `$KDE_FULL_SESSION`, or `$DISPLAY`) and instantiates the appropriate backend.
+   - **Compositor Backends (`hyprland.py`, `niri.py`, `sway.py`, `kwin.py`, `x11.py`)**: Abstract communication with window managers to query window states, monitors, and dispatch window management actions.
+   - **`compat.py`**: Cleans environment variables (`LD_LIBRARY_PATH`, `PYTHONPATH`) when running host binaries from within packaged bundles (AppImage / PyInstaller).
    - **`proc.py`**: Parses `/proc/<pid>/stat`, `/proc/<pid>/status`, `/proc/<pid>/cmdline`, and memory maps to gather process-level resource metrics without external binary dependencies.
    - **`launcher.py`**: Reconstructs execution commands and maps window classes to `.desktop` entries in `/usr/share/applications` and `~/.local/share/applications`.
-   - **`rules.py`**: Formats compositor-specific configuration directives based on window attributes.
+   - **`rules.py`**: Formats compositor-specific configuration directives for Hyprland, Niri, Sway/i3, and KDE Plasma.
 
 2. **Presentation Layer**:
    - **Desktop GUI (`window_getter.gui`)**: Built on PyQt6. Uses a background timer to poll window state changes and updates UI widgets without blocking the event loop.
