@@ -31,7 +31,13 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libegl1-mesa
+          sudo apt-get install -y \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0 \
+            libegl1 \
+            libgl1 \
+            libgl1-mesa-dri \
+            xvfb
 
       - name: Install Dependencies
         run: |
@@ -40,6 +46,8 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run Pytest Suite
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           pytest tests/
 
@@ -62,6 +70,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgl1-mesa-dev \
+            libegl1 \
+            libgl1 \
             libxkbcommon-x11-0 \
             libxcb-cursor0 \
             libxcb-xinerama0 \
