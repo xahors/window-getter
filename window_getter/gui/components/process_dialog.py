@@ -1,12 +1,14 @@
 """
-Rich Process Details Inspector Dialog with Tabbed Metrics for PyQt6 GUI.
+Rich Process Details Inspector Dialog with Real-Time Live Updating Metrics for PyQt6 GUI.
 """
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QGridLayout,
-    QFrame, QTabWidget, QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit,
+    QTabWidget, QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
+    QAbstractItemView, QComboBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, QTimer
 from window_getter.core.proc import get_process_info
 
 
@@ -15,8 +17,13 @@ class ProcessInspectorDialog(QDialog):
         super().__init__(parent)
         self.pid = pid
         self.setWindowTitle(f"Process Details - PID {pid}")
-        self.setMinimumSize(740, 560)
+        self.setMinimumSize(820, 620)
         self._init_ui()
+
+        # Live Task-Manager Active Updates Timer
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._refresh_metrics)
+        self.timer.start(1000)  # Default 1 second polling interval
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -25,66 +32,110 @@ class ProcessInspectorDialog(QDialog):
 
         info = get_process_info(self.pid)
 
-        header = QLabel(f"Process Inspector: {info.name or 'Process'} (PID {self.pid})")
-        header.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
-        layout.addWidget(header)
+        # Header Bar with Live Indicator & Rate Selector
+        header_layout = QHBoxLayout()
+        self.header_title = QLabel(f"Process Inspector: {info.name or 'Process'} (PID {self.pid})")
+        self.header_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        header_layout.addWidget(self.header_title)
+        header_layout.addStretch()
 
-        tabs = QTabWidget()
+        self.rate_combo = QComboBox()
+        self.rate_combo.addItem("Update: 1s", 1000)
+        self.rate_combo.addItem("Update: 500ms", 500)
+        self.rate_combo.addItem("Update: 2s", 2000)
+        self.rate_combo.addItem("Update: Paused", 0)
+        self.rate_combo.currentIndexChanged.connect(self._on_rate_changed)
+        header_layout.addWidget(self.rate_combo)
+
+        layout.addLayout(header_layout)
+
+        self.tabs = QTabWidget()
 
         # ----------------------------------------------------
-        # Tab 1: Overview & Metrics
+        # Tab 1: Overview (Details List View)
         # ----------------------------------------------------
         overview_tab = QWidget()
         ov_v = QVBoxLayout(overview_tab)
         ov_v.setContentsMargins(10, 10, 10, 10)
-        ov_v.setSpacing(10)
+        ov_v.setSpacing(8)
 
-        # Meta Grid
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        # Overview Details Table
+        self.details_table = QTableWidget()
+        self.details_table.setColumnCount(2)
+        self.details_table.setHorizontalHeaderLabels(["Property", "Value"])
+        self.details_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.details_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.details_table.setColumnWidth(0, 240)
+        self.details_table.verticalHeader().setVisible(False)
+        self.details_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.details_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.details_table.setAlternatingRowColors(True)
+        self.details_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1e1e1e;
+                alternate-background-color: #252526;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
+                gridline-color: #2d2d2d;
+            }
+            QTableWidget::item {
+                padding: 6px 12px;
+            }
+            QTableWidget::item:selected {
+                background-color: #3e3e42;
+                color: #ffffff;
+            }
+            QHeaderView::section {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                padding: 6px 12px;
+                border: 1px solid #3c3c3c;
+                font-weight: 600;
+            }
+        """)
 
-        self._add_grid_box(grid, "STATUS", info.status, 0, 0)
-        self._add_grid_box(grid, "USER / UID", info.user, 0, 1)
-        self._add_grid_box(grid, "PARENT PROCESS (PPID)", f"{info.ppid} ({info.parent_name or 'N/A'})", 0, 2)
+        self.prop_keys = [
+            "Process Name",
+            "Process ID (PID)",
+            "Parent Process (PPID)",
+            "User / Owner",
+            "Status",
+            "Active Threads",
+            "Start Time",
+            "Uptime",
+            "CPU Utilization",
+            "RSS Memory (Physical)",
+            "Virtual Memory (Size)",
+            "Peak Virtual Memory",
+            "Virtual Memory (Swap)",
+            "Storage Read",
+            "Storage Write",
+            "Open File Descriptors",
+            "Context Switches",
+            "Executable Binary",
+            "Working Directory",
+        ]
 
-        self._add_grid_box(grid, "START TIME", info.start_time_str or "N/A", 1, 0)
-        self._add_grid_box(grid, "UPTIME", info.uptime_str or "N/A", 1, 1)
-        self._add_grid_box(grid, "THREADS", str(info.threads), 1, 2)
+        self.details_table.setRowCount(len(self.prop_keys))
+        font_prop = QFont("Inter", 9, QFont.Weight.Medium)
+        font_val = QFont("JetBrains Mono", 9)
+        font_val.setStyleHint(QFont.StyleHint.Monospace)
 
-        self._add_grid_box(grid, "RSS MEMORY", f"{info.memory_mb:.1f} MB", 2, 0)
-        self._add_grid_box(grid, "VIRTUAL MEMORY (SIZE)", f"{info.vm_size_mb:.1f} MB", 2, 1)
-        self._add_grid_box(grid, "PEAK VIRTUAL MEMORY", f"{info.vm_peak_mb:.1f} MB", 2, 2)
+        for row, prop in enumerate(self.prop_keys):
+            item_prop = QTableWidgetItem(prop)
+            item_prop.setFont(font_prop)
+            item_prop.setForeground(QColor("#aaaaaa"))
 
-        self._add_grid_box(grid, "STORAGE READ", f"{info.read_bytes_mb:.2f} MB", 3, 0)
-        self._add_grid_box(grid, "STORAGE WRITE", f"{info.write_bytes_mb:.2f} MB", 3, 1)
-        self._add_grid_box(grid, "OPEN FILE DESCRIPTORS", str(info.open_fds), 3, 2)
+            item_val = QTableWidgetItem("")
+            item_val.setFont(font_val)
+            item_val.setForeground(QColor("#ffffff"))
 
-        ov_v.addLayout(grid)
+            self.details_table.setItem(row, 0, item_prop)
+            self.details_table.setItem(row, 1, item_val)
 
-        # Additional Paths
-        paths_box = QFrame()
-        paths_box.setStyleSheet("background-color: #2d2d2d; border: 1px solid #3c3c3c; border-radius: 5px; padding: 8px;")
-        paths_v = QVBoxLayout(paths_box)
-        paths_v.setSpacing(4)
-
-        exe_lbl = QLabel(f"Executable Binary: {info.exe_path or 'N/A'}")
-        exe_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #ffffff;")
-
-        cwd_lbl = QLabel(f"Working Directory: {info.cwd or 'N/A'}")
-        cwd_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #cccccc;")
-
-        ctxt_lbl = QLabel(f"Context Switches: {info.voluntary_ctxt_switches} voluntary, {info.nonvoluntary_ctxt_switches} nonvoluntary")
-        ctxt_lbl.setStyleSheet("font-size: 11px; color: #aaaaaa;")
-
-        paths_v.addWidget(exe_lbl)
-        paths_v.addWidget(cwd_lbl)
-        paths_v.addWidget(ctxt_lbl)
-
-        ov_v.addWidget(paths_box)
-        ov_v.addStretch()
-
-        tabs.addTab(overview_tab, "Overview & Metrics")
+        ov_v.addWidget(self.details_table)
+        self.tabs.addTab(overview_tab, "Overview")
 
         # ----------------------------------------------------
         # Tab 2: Command Line Arguments
@@ -98,13 +149,11 @@ class ProcessInspectorDialog(QDialog):
         cmd_title.setStyleSheet("font-weight: 600; color: #cccccc; font-size: 12px;")
         cmd_v.addWidget(cmd_title)
 
-        cmd_edit = QTextEdit()
-        cmd_edit.setReadOnly(True)
-        cmd_str = " ".join(info.cmdline) if info.cmdline else "N/A"
-        cmd_edit.setText(cmd_str)
-        cmd_v.addWidget(cmd_edit)
+        self.cmd_edit = QTextEdit()
+        self.cmd_edit.setReadOnly(True)
+        cmd_v.addWidget(self.cmd_edit)
 
-        tabs.addTab(cmd_tab, "Command Line")
+        self.tabs.addTab(cmd_tab, "Command Line")
 
         # ----------------------------------------------------
         # Tab 3: Environment Variables
@@ -124,12 +173,32 @@ class ProcessInspectorDialog(QDialog):
         self.env_table.setHorizontalHeaderLabels(["Variable Name", "Value"])
         self.env_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.env_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.env_table.setColumnWidth(0, 220)
+        self.env_table.setColumnWidth(0, 240)
         self.env_table.verticalHeader().setVisible(False)
-        self._populate_env_table(info.environ)
+        self.env_table.setAlternatingRowColors(True)
+        self.env_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1e1e1e;
+                alternate-background-color: #252526;
+                color: #ffffff;
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
+                gridline-color: #2d2d2d;
+            }
+            QTableWidget::item {
+                padding: 6px 12px;
+            }
+            QHeaderView::section {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                padding: 6px 12px;
+                border: 1px solid #3c3c3c;
+                font-weight: 600;
+            }
+        """)
         env_v.addWidget(self.env_table)
 
-        tabs.addTab(env_tab, f"Environment ({len(info.environ)})")
+        self.env_tab_idx = self.tabs.addTab(env_tab, "Environment")
 
         # ----------------------------------------------------
         # Tab 4: Open File Descriptors
@@ -143,15 +212,13 @@ class ProcessInspectorDialog(QDialog):
         fd_lbl.setStyleSheet("font-weight: 600; color: #cccccc; font-size: 12px;")
         fd_v.addWidget(fd_lbl)
 
-        fd_edit = QTextEdit()
-        fd_edit.setReadOnly(True)
-        fd_text = "\n".join(info.fd_details) if info.fd_details else "No accessible file descriptors"
-        fd_edit.setText(fd_text)
-        fd_v.addWidget(fd_edit)
+        self.fd_edit = QTextEdit()
+        self.fd_edit.setReadOnly(True)
+        fd_v.addWidget(self.fd_edit)
 
-        tabs.addTab(fd_tab, f"Open FDs ({len(info.fd_details)})")
+        self.fd_tab_idx = self.tabs.addTab(fd_tab, "Open FDs")
 
-        layout.addWidget(tabs, 1)
+        layout.addWidget(self.tabs, 1)
 
         # Bottom buttons
         btn_layout = QHBoxLayout()
@@ -163,28 +230,71 @@ class ProcessInspectorDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
-    def _add_grid_box(self, grid: QGridLayout, title: str, val_text: str, row: int, col: int):
-        box = QFrame()
-        box.setStyleSheet("""
-            background-color: #2d2d2d;
-            border: 1px solid #3c3c3c;
-            border-radius: 5px;
-            padding: 6px 10px;
-        """)
-        v = QVBoxLayout(box)
-        v.setContentsMargins(4, 4, 4, 4)
-        v.setSpacing(2)
+        # Populate initial values
+        self._update_ui_with_info(info, initial=True)
 
-        t_lbl = QLabel(title)
-        t_lbl.setStyleSheet("font-size: 10px; color: #aaaaaa; font-weight: 600;")
-        
-        v_lbl = QLabel(val_text)
-        v_lbl.setStyleSheet("font-size: 12px; color: #ffffff; font-family: monospace; font-weight: 600;")
-        v_lbl.setWordWrap(True)
-        
-        v.addWidget(t_lbl)
-        v.addWidget(v_lbl)
-        grid.addWidget(box, row, col)
+    def _on_rate_changed(self):
+        rate = self.rate_combo.currentData()
+        if rate > 0:
+            self.timer.start(rate)
+        else:
+            self.timer.stop()
+
+    def _refresh_metrics(self):
+        info = get_process_info(self.pid)
+        self._update_ui_with_info(info, initial=False)
+
+    def _update_ui_with_info(self, info, initial: bool = False):
+        if info.status == "dead" or not info.name:
+            self.timer.stop()
+
+        # Update Overview Table
+        values_map = {
+            "Process Name": info.name or "N/A",
+            "Process ID (PID)": str(info.pid),
+            "Parent Process (PPID)": f"{info.ppid} ({info.parent_name or 'systemd'})" if info.ppid > 0 else "None",
+            "User / Owner": f"{info.user}",
+            "Status": info.status if info.status != "dead" else "Terminated (dead)",
+            "Active Threads": str(info.threads),
+            "Start Time": info.start_time_str or "N/A",
+            "Uptime": info.uptime_str or "N/A",
+            "CPU Utilization": f"{info.cpu_percent:.1f} %",
+            "RSS Memory (Physical)": f"{info.memory_mb:.1f} MB",
+            "Virtual Memory (Size)": f"{info.vm_size_mb:.1f} MB",
+            "Peak Virtual Memory": f"{info.vm_peak_mb:.1f} MB",
+            "Virtual Memory (Swap)": f"{info.vm_swap_mb:.1f} MB",
+            "Storage Read": f"{info.read_bytes_mb:.2f} MB",
+            "Storage Write": f"{info.write_bytes_mb:.2f} MB",
+            "Open File Descriptors": str(info.open_fds),
+            "Context Switches": f"{info.voluntary_ctxt_switches:,} voluntary, {info.nonvoluntary_ctxt_switches:,} nonvoluntary",
+            "Executable Binary": info.exe_path or "N/A",
+            "Working Directory": info.cwd or "N/A",
+        }
+
+        for row, prop in enumerate(self.prop_keys):
+            val = values_map.get(prop, "")
+            item_val = self.details_table.item(row, 1)
+            if item_val:
+                item_val.setText(str(val))
+                if prop == "CPU Utilization" and info.cpu_percent > 5.0:
+                    item_val.setForeground(QColor("#4ade80"))
+                elif prop == "Status" and info.status == "dead":
+                    item_val.setForeground(QColor("#f87171"))
+                else:
+                    item_val.setForeground(QColor("#ffffff"))
+
+        # Initial/Static updates
+        if initial:
+            cmd_str = " ".join(info.cmdline) if info.cmdline else "N/A"
+            self.cmd_edit.setText(cmd_str)
+            self._populate_env_table(info.environ)
+            self.tabs.setTabText(self.env_tab_idx, f"Environment ({len(info.environ)})")
+
+        # Update FDs Tab
+        fd_text = "\n".join(info.fd_details) if info.fd_details else "No accessible file descriptors"
+        if self.fd_edit.toPlainText() != fd_text:
+            self.fd_edit.setText(fd_text)
+        self.tabs.setTabText(self.fd_tab_idx, f"Open FDs ({len(info.fd_details)})")
 
     def _populate_env_table(self, env_dict):
         self.env_items = list(env_dict.items())
@@ -193,10 +303,22 @@ class ProcessInspectorDialog(QDialog):
     def _filter_env_table(self):
         query = self.env_search.text().lower()
         filtered = [(k, v) for k, v in getattr(self, "env_items", []) if query in k.lower() or query in v.lower()]
-        
+
         self.env_table.setRowCount(len(filtered))
         for row, (k, v) in enumerate(filtered):
             item_k = QTableWidgetItem(k)
             item_v = QTableWidgetItem(v)
             self.env_table.setItem(row, 0, item_k)
             self.env_table.setItem(row, 1, item_v)
+
+    def closeEvent(self, event):
+        self.timer.stop()
+        super().closeEvent(event)
+
+    def reject(self):
+        self.timer.stop()
+        super().reject()
+
+    def accept(self):
+        self.timer.stop()
+        super().accept()

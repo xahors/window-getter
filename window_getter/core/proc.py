@@ -146,11 +146,15 @@ def get_start_time_and_uptime(pid: int) -> Tuple[str, str]:
             sys_uptime = float(f.read().split()[0])
 
         with open(stat_file, "r") as f:
-            data = f.read().split()
+            raw = f.read()
 
-        # field 21 (0-indexed) is starttime in jiffies after system boot
-        starttime_jiffies = float(data[21])
-        clock_ticks = os.sysconf("SC_CLK_TCPS") if hasattr(os, "sysconf") else 100
+        after_paren = raw[raw.rfind(")") + 1:].strip().split()
+        # field 22 (starttime) is index 19 after the closing paren
+        starttime_jiffies = float(after_paren[19])
+        try:
+            clock_ticks = os.sysconf("SC_CLK_TCK")
+        except Exception:
+            clock_ticks = 100
         proc_start_sec_after_boot = starttime_jiffies / clock_ticks
 
         proc_uptime_sec = sys_uptime - proc_start_sec_after_boot
@@ -158,11 +162,14 @@ def get_start_time_and_uptime(pid: int) -> Tuple[str, str]:
             proc_uptime_sec = 0.0
 
         # Formatted uptime
-        hrs = int(proc_uptime_sec // 3600)
+        days = int(proc_uptime_sec // 86400)
+        hrs = int((proc_uptime_sec % 86400) // 3600)
         mins = int((proc_uptime_sec % 3600) // 60)
         secs = int(proc_uptime_sec % 60)
 
-        if hrs > 0:
+        if days > 0:
+            uptime_str = f"{days}d {hrs}h {mins}m"
+        elif hrs > 0:
             uptime_str = f"{hrs}h {mins}m {secs}s"
         elif mins > 0:
             uptime_str = f"{mins}m {secs}s"
@@ -284,10 +291,12 @@ def _calculate_cpu_percent(pid: int) -> float:
 
     try:
         with open(stat_file, "r") as f:
-            data = f.read().split()
-        # utime (index 13) + stime (index 14)
-        utime = float(data[13])
-        stime = float(data[14])
+            raw = f.read()
+
+        after_paren = raw[raw.rfind(")") + 1:].strip().split()
+        # utime is field 14 (index 11 after paren), stime is field 15 (index 12 after paren)
+        utime = float(after_paren[11])
+        stime = float(after_paren[12])
         total_ticks = utime + stime
         now = time.time()
 
@@ -296,7 +305,10 @@ def _calculate_cpu_percent(pid: int) -> float:
             time_delta = now - prev_time
             if time_delta > 0:
                 ticks_delta = total_ticks - prev_ticks
-                clock_ticks_per_sec = os.sysconf("SC_CLK_TCPS") if hasattr(os, "sysconf") else 100
+                try:
+                    clock_ticks_per_sec = os.sysconf("SC_CLK_TCK")
+                except Exception:
+                    clock_ticks_per_sec = 100
                 cpu_usage = (ticks_delta / clock_ticks_per_sec) / time_delta * 100.0
                 _prev_proc_ticks[pid] = (total_ticks, now)
                 return round(cpu_usage, 1)

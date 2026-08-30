@@ -101,4 +101,17 @@ def test_rule_dialog(qapp):
     dlg.close()
 
 
+def test_process_inspector_dialog(qapp):
+    import os
+    dlg = ProcessInspectorDialog(os.getpid())
+    assert dlg is not None
+    assert dlg.details_table.rowCount() > 10
+    # Check that properties like Process Name and Process ID exist
+    props = [dlg.details_table.item(r, 0).text() for r in range(dlg.details_table.rowCount())]
+    assert "Process ID (PID)" in props
+    assert "RSS Memory (Physical)" in props
+    dlg.close()
+
+
+
 
