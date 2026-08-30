@@ -266,6 +266,71 @@ class RuleGenerator:
             ] + rule_lines
             return "\n".join(lines)
 
+        elif syntax == "niri":
+            # Niri KDL window-rule format
+            kdl_lines = [
+                f"// Window Rule for {win.display_title}",
+                "window-rule {"
+            ]
+            match_parts = []
+            if match_class and app:
+                match_parts.append(f'app-id="{app_pattern}"')
+            if match_title and win.title:
+                match_parts.append(f'title="{title_pattern}"')
+            if not match_parts:
+                match_parts.append(f'app-id="{app_pattern}"')
+
+            for m in match_parts:
+                kdl_lines.append(f"    match {m}")
+
+            if float_win:
+                kdl_lines.append("    open-floating true")
+            elif tile_win:
+                kdl_lines.append("    open-floating false")
+
+            if launch_workspace and workspace_val:
+                kdl_lines.append(f'    open-on-workspace "{workspace_val}"')
+            if fixed_size and width_val > 0:
+                kdl_lines.append(f"    default-column-width {{ fixed {width_val}; }}")
+            if fullscreen_win:
+                kdl_lines.append("    open-fullscreen true")
+            if maximize_win:
+                kdl_lines.append("    open-maximized true")
+            if opaque_win:
+                kdl_lines.append("    opacity 1.0")
+            elif opacity_win:
+                kdl_lines.append(f"    opacity {active_opacity}")
+            if disable_shadow:
+                kdl_lines.append("    draw-border-with-background false")
+
+            kdl_lines.append("}")
+            return "\n".join(kdl_lines)
+
+        elif syntax == "kwin":
+            # KDE Plasma kwinrulesrc format
+            rule_id = win.display_app_id or "custom_rule"
+            lines = [
+                f"# KDE Plasma Window Rule for {win.display_title}",
+                f"[{rule_id}]",
+                f"Description=Window Rule for {win.display_app_id}",
+                f"wmclass={win.display_app_id}",
+                "wmclassmatch=1",
+                "types=1",
+            ]
+            if float_win:
+                lines.extend(["floating=true", "floatingrule=3"])
+            if launch_workspace and workspace_val:
+                lines.extend([f"desktops={workspace_val}", "desktopsrule=3"])
+            if fixed_size and width_val > 0 and height_val > 0:
+                lines.extend([f"size={width_val},{height_val}", "sizerule=3"])
+            if fullscreen_win:
+                lines.extend(["fullscreen=true", "fullscreenrule=3"])
+            if maximize_win:
+                lines.extend(["maximize=true", "maximizerule=3"])
+            if opacity_win:
+                lines.extend([f"opacityactive={int(active_opacity * 100)}", "opacityactiverule=3"])
+            return "\n".join(lines)
+
         else:
             # Sway / i3 for_window format
             criteria = []
@@ -317,9 +382,15 @@ class RuleGenerator:
         """
         Default template block generator.
         """
-        if target.lower() in ["hyprland_lua", "lua"]:
+        t = target.lower()
+        if t in ["hyprland_lua", "lua"]:
             return RuleGenerator.build_custom_rule(win, syntax="hyprland_lua", float_win=True, launch_workspace=True, workspace_val=str(win.workspace_name), fixed_size=True, width_val=win.width, height_val=win.height)
-        elif target.lower() in ["hyprland", "hyprland_conf"]:
+        elif t in ["hyprland", "hyprland_conf"]:
             return RuleGenerator.build_custom_rule(win, syntax="hyprland_conf", float_win=True, launch_workspace=True, workspace_val=str(win.workspace_name), fixed_size=True, width_val=win.width, height_val=win.height)
+        elif t in ["niri"]:
+            return RuleGenerator.build_custom_rule(win, syntax="niri", float_win=True, launch_workspace=True, workspace_val=str(win.workspace_name), fixed_size=True, width_val=win.width, height_val=win.height)
+        elif t in ["kwin", "kde"]:
+            return RuleGenerator.build_custom_rule(win, syntax="kwin", float_win=True, launch_workspace=True, workspace_val=str(win.workspace_name), fixed_size=True, width_val=win.width, height_val=win.height)
         else:
             return RuleGenerator.build_custom_rule(win, syntax="sway", float_win=True, launch_workspace=True, workspace_val=str(win.workspace_name), fixed_size=True, width_val=win.width, height_val=win.height)
+

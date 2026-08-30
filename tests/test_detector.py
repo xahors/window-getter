@@ -61,12 +61,63 @@ def test_rule_generator():
     lua_rule = RuleGenerator.build_custom_rule(win, syntax="hyprland_lua", float_win=True, launch_workspace=True, workspace_val="1")
     assert "hl.window_rule" in lua_rule
     assert 'class = "^(steam)$"' in lua_rule
-
     assert "float = true" in lua_rule
 
     conf_rule = RuleGenerator.build_custom_rule(win, syntax="hyprland_conf", float_win=True)
     assert "windowrulev2 = float, class:^(steam)$" in conf_rule
 
+    niri_rule = RuleGenerator.build_custom_rule(win, syntax="niri", float_win=True, launch_workspace=True, workspace_val="1")
+    assert "window-rule {" in niri_rule
+    assert 'app-id="^(steam)$"' in niri_rule
+    assert "open-floating true" in niri_rule
+
+    kwin_rule = RuleGenerator.build_custom_rule(win, syntax="kwin", float_win=True, launch_workspace=True, workspace_val="1")
+    assert "[steam]" in kwin_rule
+    assert "floating=true" in kwin_rule
+
+
+def test_niri_backend_parsing():
+    from window_getter.core.niri import NiriBackend
+    backend = NiriBackend()
+    sample_item = {
+        "id": 42,
+        "title": "Alacritty Terminal",
+        "app_id": "Alacritty",
+        "pid": 12345,
+        "workspace_id": 2,
+        "is_focused": True,
+        "layout": {"tile": {"x": 100, "y": 200, "width": 1024, "height": 768}}
+    }
+    win = backend._parse_niri_window(sample_item)
+    assert win is not None
+    assert win.address == "42"
+    assert win.app_id == "Alacritty"
+    assert win.is_active is True
+    assert win.x == 100
+    assert win.width == 1024
+
+
+def test_kwin_backend_parsing():
+    from window_getter.core.kwin import KWinBackend
+    backend = KWinBackend()
+    sample_data = {
+        "address": "0x55aa",
+        "caption": "Dolphin File Manager",
+        "resourceclass": "org.kde.dolphin",
+        "pid": "8888",
+        "x": "50",
+        "y": "50",
+        "width": "800",
+        "height": "600",
+        "active": "true",
+        "desktop": "2"
+    }
+    win = backend._build_kwin_window(sample_data)
+    assert win is not None
+    assert win.address == "0x55aa"
+    assert win.app_id == "org.kde.dolphin"
+    assert win.pid == 8888
+    assert win.is_active is True
 
 
 def test_detector_active_window():
@@ -103,6 +154,10 @@ def test_compat_clean_env(monkeypatch):
 
 def test_backend_detection():
     detector = WindowDetector()
-    assert detector.backend_name in ["Hyprland", "Sway", "X11", "Generic / Unsupported"]
+    assert detector.backend_name in [
+        "Hyprland", "Niri", "Sway / i3", "KDE Plasma (KWin)",
+        "Universal EWMH (X11)", "Generic / Unsupported"
+    ]
+
 
 

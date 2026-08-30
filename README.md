@@ -19,15 +19,17 @@ window-getter is a Linux desktop utility and command-line tool for inspecting ac
   - Application relaunching with automatic command-line reconstruction from `/proc/<pid>/cmdline`, executable binary resolution, or `.desktop` entry matching.
   - Window focus switching and workspace relocation.
 - **Compositor Backends**:
-  - **Hyprland**: Native `hyprctl` JSON IPC for querying windows, workspaces, and dispatching actions.
-  - **Sway / i3**: Native `swaymsg` tree and workspace query API.
-  - **X11 / Generic**: Fallback using `xdotool`, `xprop`, and `wmctrl`.
+  - **Hyprland**: Direct UNIX domain socket IPC and `hyprctl` JSON queries.
+  - **Niri**: Scrollable-tiling Wayland compositor IPC via `$NIRI_SOCKET` and `niri msg --json`.
+  - **Sway / i3**: Native `swaymsg` and `i3-ipc` socket API.
+  - **KDE Plasma (KWin)**: Wayland & X11 D-Bus interface (`org.kde.KWin`).
+  - **Universal EWMH (X11)**: Universal support for XFCE (`xfwm4`), MATE (`marco`), Cinnamon (`muffin`), Openbox, LXQt, bspwm, AwesomeWM, dwm, and xmonad via `wmctrl`, `xdotool`, and `xprop`.
 - **User Interfaces**:
   - **PyQt6 Desktop GUI**: Graphical dashboard featuring active window inspection, a searchable window table, and an interactive 2D spatial workspace map.
   - **CLI Interface**: Subcommands for automated scripts, terminal inspection, and window management.
   - **Web Dashboard and REST API**: Lightweight HTTP server providing a browser dashboard and JSON API endpoints.
 - **Compositor Rule Generator**:
-  - Generates configuration rules for Hyprland (`windowrulev2` and Hyprland Lua syntax) and Sway (`for_window`).
+  - Generates configuration rules for Hyprland (`windowrulev2` and Hyprland Lua syntax), Niri (KDL `window-rule`), KDE Plasma (`kwinrulesrc`), and Sway (`for_window`).
 
 ---
 
@@ -37,9 +39,11 @@ window-getter is a Linux desktop utility and command-line tool for inspecting ac
 
 - Python 3.9 or higher
 - One of the supported window environments:
-  - Hyprland (`hyprctl`)
+  - Hyprland
+  - Niri (`niri`)
   - Sway / i3 (`swaymsg`)
-  - X11 with `xdotool`, `xprop`, and `wmctrl` installed
+  - KDE Plasma (KWin D-Bus)
+  - Universal X11 with `wmctrl`, `xdotool`, or `xprop` installed
 - For the desktop GUI: Qt6 runtime libraries (e.g. `libxcb`, `libxkbcommon`)
 
 ### Installation from Source

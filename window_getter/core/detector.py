@@ -1,5 +1,5 @@
 """
-Window detector manager and unified interface across Hyprland, Sway, and X11 backends.
+Window detector manager and unified interface across Hyprland, Niri, Sway/i3, KDE Plasma KWin, and Universal EWMH/X11 backends.
 """
 
 import os
@@ -8,7 +8,9 @@ import subprocess
 from typing import List, Optional, Tuple, Dict
 from window_getter.core.models import WindowInfo, WorkspaceInfo
 from window_getter.core.hyprland import HyprlandBackend
+from window_getter.core.niri import NiriBackend
 from window_getter.core.sway import SwayBackend
+from window_getter.core.kwin import KWinBackend
 from window_getter.core.x11 import X11Backend
 from window_getter.core.launcher import relaunch_window as core_relaunch_window, launch_new_command
 
@@ -38,9 +40,9 @@ class WindowDetector:
         self._detect_backend()
 
     def _detect_backend(self):
-        """Auto-detect active window manager backend."""
-        # 1. Hyprland (Check signature first, or verify hyprctl returns 0)
-        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and HyprlandBackend.is_available():
+        """Auto-detect active window manager backend in order of session specificity."""
+        # 1. Hyprland (Active session or socket/IPC responding)
+        if (os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or os.environ.get("HYPRLAND_CMD")) and HyprlandBackend.is_available():
             self._backend = HyprlandBackend()
             self.backend_name = "Hyprland"
             return
@@ -49,23 +51,46 @@ class WindowDetector:
             self.backend_name = "Hyprland"
             return
 
-        # 2. Sway / i3 (Check socket or swaymsg tree)
+        # 2. Niri (Scrollable-tiling Wayland compositor)
+        if (os.environ.get("NIRI_SOCKET") or "niri" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()) and NiriBackend.is_available():
+            self._backend = NiriBackend()
+            self.backend_name = "Niri"
+            return
+        elif NiriBackend.is_available():
+            self._backend = NiriBackend()
+            self.backend_name = "Niri"
+            return
+
+        # 3. Sway / i3 (Check socket or swaymsg/i3-ipc)
         if (os.environ.get("SWAYSOCK") or os.environ.get("I3SOCK")) and SwayBackend.is_available():
             self._backend = SwayBackend()
-            self.backend_name = "Sway"
+            self.backend_name = "Sway / i3"
             return
         elif SwayBackend.is_available():
             self._backend = SwayBackend()
-            self.backend_name = "Sway"
+            self.backend_name = "Sway / i3"
             return
 
-        # 3. X11 (Check DISPLAY and X11 tools)
+        # 4. KDE Plasma / KWin (Wayland & X11 D-Bus)
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+        if ("KDE" in desktop or "PLASMA" in desktop or os.environ.get("KDE_FULL_SESSION")) and KWinBackend.is_available():
+            self._backend = KWinBackend()
+            self.backend_name = "KDE Plasma (KWin)"
+            return
+
+        # 5. Universal EWMH / X11 (XFCE, MATE, Cinnamon, Openbox, bspwm, AwesomeWM, dwm, xmonad, LXQt)
         if os.environ.get("DISPLAY") and X11Backend.is_available():
             self._backend = X11Backend()
-            self.backend_name = "X11"
+            self.backend_name = "Universal EWMH (X11)"
             return
 
-        # 4. Generic fallback when no supported WM is active
+        # 6. Check KWin without strict environment variable match
+        if KWinBackend.is_available():
+            self._backend = KWinBackend()
+            self.backend_name = "KDE Plasma (KWin)"
+            return
+
+        # 7. Generic fallback
         self._backend = GenericBackend()
         self.backend_name = "Generic / Unsupported"
 

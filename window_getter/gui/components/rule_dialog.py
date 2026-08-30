@@ -47,6 +47,8 @@ class RuleGeneratorDialog(QDialog):
         self.syntax_combo = QComboBox()
         self.syntax_combo.addItem("Hyprland (Lua Config)", "hyprland_lua")
         self.syntax_combo.addItem("Hyprland (Classic windowrulev2)", "hyprland_conf")
+        self.syntax_combo.addItem("Niri (KDL window-rule)", "niri")
+        self.syntax_combo.addItem("KDE Plasma (kwinrulesrc)", "kwin")
         self.syntax_combo.addItem("Sway / i3 (for_window)", "sway")
         self.syntax_combo.currentIndexChanged.connect(self._rebuild_preview)
 
