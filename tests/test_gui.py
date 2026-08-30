@@ -1,0 +1,82 @@
+"""
+Automated PyQt6 GUI Component & Modal Dialog Tests.
+"""
+
+import pytest
+from PyQt6.QtWidgets import QApplication
+from window_getter.core.models import WindowInfo
+from window_getter.gui.main_window import MainWindow
+from window_getter.gui.components.active_card import ActiveWindowCard
+from window_getter.gui.components.window_table import WindowTableWidget
+from window_getter.gui.components.workspace_map import WorkspaceVisualizer
+from window_getter.gui.components.process_dialog import ProcessInspectorDialog
+from window_getter.gui.components.rule_dialog import RuleGeneratorDialog
+from window_getter.gui.components.relaunch_dialog import RelaunchDialog
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    app = QApplication.instance()
+    if not app:
+        app = QApplication([])
+    yield app
+
+
+def test_main_window_instantiation(qapp):
+    win = MainWindow()
+    assert win is not None
+    assert "window-getter" in win.windowTitle()
+    win.refresh_data()
+    qapp.processEvents()
+    win.close()
+
+
+def test_active_card_widget(qapp):
+    card = ActiveWindowCard()
+    sample_win = WindowInfo(
+        address="0x123",
+        app_id="kitty",
+        title="Terminal",
+        pid=9999,
+        width=1200,
+        height=800,
+        workspace_name="1"
+    )
+    card.update_window(sample_win)
+    assert card.title_label.text() == "Terminal"
+    assert "9999" in card.pid_label.text()
+    qapp.processEvents()
+
+
+def test_window_table_widget(qapp):
+    table = WindowTableWidget()
+    sample_windows = [
+        WindowInfo(address="0x1", app_id="firefox", title="Mozilla Firefox", pid=101, is_active=True),
+        WindowInfo(address="0x2", app_id="steam", title="Steam", pid=102, is_active=False),
+    ]
+    table.update_data(sample_windows, filter_text="")
+    assert table.table.rowCount() == 2
+
+    # Test search filter
+    table.update_data(sample_windows, filter_text="firefox")
+    assert table.table.rowCount() == 1
+    qapp.processEvents()
+
+
+def test_workspace_visualizer(qapp):
+    viz = WorkspaceVisualizer()
+    sample_windows = [
+        WindowInfo(address="0x1", app_id="kitty", title="Kitty", pid=101, x=0, y=0, width=800, height=600),
+    ]
+    viz.update_windows(sample_windows)
+    qapp.processEvents()
+
+
+def test_rule_dialog(qapp):
+    sample_win = WindowInfo(address="0x1", app_id="kitty", title="Kitty", pid=101)
+    dlg = RuleGeneratorDialog(sample_win)
+    assert dlg is not None
+    assert "hl.window_rule" in dlg.code_preview.toPlainText()
+    dlg.close()
+
+
