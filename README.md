@@ -96,6 +96,86 @@ uv run window-getter
 
 ---
 
+## Building
+
+### Build Python Wheels and Source Distribution
+
+To package `window-getter` into standard distribution archives (`.whl` and `.tar.gz`):
+
+```bash
+# Install the build tool
+pip install build
+
+# Build distribution packages
+python3 -m build
+```
+
+Or using `uv`:
+
+```bash
+uv build
+```
+
+Built artifacts will be generated in the `dist/` directory:
+- `dist/window_getter-1.0.0-py3-none-any.whl`
+- `dist/window_getter-1.0.0.tar.gz`
+
+To install the built wheel:
+
+```bash
+pip install dist/window_getter-1.0.0-py3-none-any.whl
+```
+
+### Build Standalone Executable and AppImage
+
+#### 1. Standalone Binary Bundle (PyInstaller)
+
+```bash
+pip install pyinstaller
+
+pyinstaller --name window-getter \
+  --add-data "window_getter/web/static:window_getter/web/static" \
+  --collect-all PyQt6 \
+  window_getter/cli.py
+```
+
+The resulting executable directory is created under `dist/window-getter/`.
+
+#### 2. Linux AppImage Package
+
+To package the standalone build into a single executable `.AppImage`:
+
+```bash
+# Prepare AppDir directory layout
+mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/metainfo AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/icons/hicolor/scalable/apps
+cp -r dist/window-getter/* AppDir/usr/bin/
+cp assets/window-getter.desktop AppDir/
+cp assets/window-getter.desktop AppDir/usr/share/applications/
+cp assets/window-getter.appdata.xml AppDir/usr/share/metainfo/
+cp assets/window-getter.png AppDir/
+cp assets/window-getter.png AppDir/usr/share/icons/hicolor/256x256/apps/
+cp assets/window-getter.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+
+# Create AppRun entrypoint
+cat << 'EOF' > AppDir/AppRun
+#!/bin/sh
+SELF=$(readlink -f "$0")
+HERE=${SELF%/*}
+export PATH="${HERE}/usr/bin:${PATH}"
+export LD_LIBRARY_PATH="${HERE}/usr/bin:${LD_LIBRARY_PATH}"
+exec "${HERE}/usr/bin/window-getter" "$@"
+EOF
+chmod +x AppDir/AppRun
+
+# Generate AppImage using appimagetool
+wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+chmod +x appimagetool
+./appimagetool --appimage-extract
+ARCH=x86_64 ./squashfs-root/AppRun AppDir window-getter-x86_64.AppImage
+```
+
+---
+
 ## Usage
 
 ### Desktop Graphical Interface
@@ -175,6 +255,14 @@ window-getter web --host 127.0.0.1 --port 8080
 
 ```
 window-getter/
+├── .github/
+│   └── workflows/
+│       └── appimage.yml        # CI test matrix and AppImage release workflow
+├── assets/                     # Desktop integration and branding assets
+│   ├── window-getter.desktop   # FreeDesktop application desktop entry
+│   ├── window-getter.appdata.xml # AppStream metadata
+│   ├── window-getter.svg       # Vector application icon
+│   └── window-getter.png       # 256x256 application icon
 ├── pyproject.toml              # Project metadata, dependencies, and entrypoints
 ├── setup.py                    # Build configuration
 ├── window_getter/

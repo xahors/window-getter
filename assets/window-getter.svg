@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <!-- Base Plate -->
+  <rect x="16" y="16" width="224" height="224" rx="40" fill="url(#bgGrad)" stroke="#334155" stroke-width="4"/>
+  <!-- Top Bar -->
+  <rect x="28" y="28" width="200" height="40" rx="12" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <!-- Window Controls -->
+  <circle cx="50" cy="48" r="6" fill="#f87171"/>
+  <circle cx="68" cy="48" r="6" fill="#fbbf24"/>
+  <circle cx="86" cy="48" r="6" fill="#34d399"/>
+  <!-- Inspector Crosshair / Geometry Frame -->
+  <rect x="44" y="88" width="168" height="124" rx="14" fill="none" stroke="url(#cyanGrad)" stroke-width="4" stroke-dasharray="6,4"/>
+  <circle cx="128" cy="150" r="28" fill="none" stroke="url(#accentGrad)" stroke-width="5"/>
+  <line x1="128" y1="112" x2="128" y2="134" stroke="url(#accentGrad)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="128" y1="166" x2="128" y2="188" stroke="url(#accentGrad)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="90" y1="150" x2="112" y2="150" stroke="url(#accentGrad)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="144" y1="150" x2="166" y2="150" stroke="url(#accentGrad)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="128" cy="150" r="5" fill="#38bdf8"/>
+</svg>

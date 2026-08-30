@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.window_getter</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Window Getter</name>
+  <summary>Linux active window inspector and task manager</summary>
+  <description>
+    <p>
+      window-getter is a Linux desktop utility for inspecting active graphical windows,
+      managing process lifecycles, and generating compositor window rules for Hyprland and Sway.
+    </p>
+  </description>
+  <launchable type="desktop-id">window-getter.desktop</launchable>
+  <provides>
+    <binary>window-getter</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>System</category>
+  </categories>
+</component>

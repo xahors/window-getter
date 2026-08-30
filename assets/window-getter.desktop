@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Window Getter
+Comment=Linux active window inspector and task manager
+Exec=window-getter
+Icon=window-getter
+Type=Application
+Terminal=false
+Categories=Utility;System;
+Keywords=window;hyprland;sway;x11;inspector;task-manager;
+StartupWMClass=window-getter
