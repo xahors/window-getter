@@ -7,6 +7,17 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release?'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Tag/version for release (e.g. v1.0.0)'
+        required: false
+        type: string
+        default: 'v1.0.0'
 
 permissions:
   contents: write
@@ -87,7 +98,7 @@ jobs:
         run: |
           pip install --upgrade pip setuptools wheel
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller build
 
       - name: Build Standalone Binary with PyInstaller
         run: |
@@ -145,11 +156,21 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish Release Assets
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Build Python Source Distribution and Wheel
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+        run: |
+          python3 -m build
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag_name }}
+          name: "Release ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag_name }}"
+          generate_release_notes: true
           files: |
             window-getter-x86_64.AppImage
+            dist/*.tar.gz
+            dist/*.whl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
