@@ -44,17 +44,54 @@ window-getter is a Linux desktop utility and command-line tool for inspecting ac
 
 ### Installation from Source
 
+#### Standard Installation (Virtual Environment)
+
+1. Create a virtual environment:
+   ```bash
+   python3 -m venv .venv
+   ```
+
+2. Activate the virtual environment based on your shell:
+   - **Bash / Zsh**:
+     ```bash
+     source .venv/bin/activate
+     ```
+   - **Fish**:
+     ```fish
+     source .venv/bin/activate.fish
+     ```
+   - **Csh / Tcsh**:
+     ```csh
+     source .venv/bin/activate.csh
+     ```
+
+3. Install the package:
+   ```bash
+   pip install .
+   ```
+   *(For development with live editable source mapping, use `pip install -e .`)*
+
+#### Direct Execution (No Shell Activation Required)
+
+You can install and run `window-getter` directly without activating the virtual environment in your current shell:
+
 ```bash
-# Clone the repository
-git clone https://github.com/durkluf/window-getter.git
-cd window-getter
-
-# Create and activate a virtual environment
+# Create virtual environment and install
 python3 -m venv .venv
-source .venv/bin/activate
+./.venv/bin/pip install .
 
-# Install the package in editable mode
-pip install -e .
+# Run window-getter directly
+./.venv/bin/window-getter
+```
+
+#### Alternative: Using `uv`
+
+If you use `uv`:
+
+```bash
+uv venv
+uv pip install .
+uv run window-getter
 ```
 
 ---
@@ -188,19 +225,3 @@ window-getter/
    - **Desktop GUI (`window_getter.gui`)**: Built on PyQt6. Uses a background timer to poll window state changes and updates UI widgets without blocking the event loop.
    - **CLI (`window_getter.cli`)**: Provides direct command-line access to core functions with human-readable table or machine-readable JSON output formats.
    - **Web Server (`window_getter.web`)**: Implements an embedded HTTP server providing REST endpoints and a browser-based dashboard.
-
----
-
-## Testing
-
-Run the pytest test suite:
-
-```bash
-pytest
-```
-
----
-
-## License
-
-This project is licensed under the MIT License. See the license declarations in `pyproject.toml` for details.
